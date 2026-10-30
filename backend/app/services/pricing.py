@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.money import money, usage_qty
 from app.models import Metric, PricingComponent, PricingPlan, PricingVersion
@@ -130,7 +130,11 @@ def _attach_components(
 
 
 def get_version(db: Session, version_id: str) -> PricingVersion:
-    version = db.get(PricingVersion, version_id)
+    version = db.scalar(
+        select(PricingVersion)
+        .where(PricingVersion.id == version_id)
+        .options(selectinload(PricingVersion.components))
+    )
     if version is None:
         raise ValueError("pricing version not found")
     return version

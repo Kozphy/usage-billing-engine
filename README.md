@@ -1,23 +1,24 @@
 # Usage Billing Engine
 
-Portfolio-grade **usage metering → versioned pricing → invoices → payment adapter → webhooks** service.
+Focused portfolio service: **usage metering → versioned pricing → immutable invoices → payment adapter → safe pricing migration**.
 
-Built to align with payments / FinOps interview themes (usage-based billing, Decimal money, idempotent ingest, outbox, shadow pricing migrations). **Mock payment provider by default** — Stripe adapter is stubbed until real keys exist.
+Built for payments-engineering interview themes (Decimal money, idempotent ingest, outbox recovery, late-usage adjustments, shadow cutover). Synthetic customers only. **Mock payment provider by default.**
 
 ## Status
 
 | Capability | State |
 |---|---|
-| Decimal money (no float) | Verified in tests |
-| Idempotent usage ingest (`event_id`) | Verified |
-| Outbox → monthly aggregates | Verified (sync mode) |
-| Versioned pricing + tiered rates | Verified |
-| Invoice generation | Verified |
+| Decimal money (no float) | Verified |
+| Idempotent ingest + content-hash conflict (409) | Verified |
+| Durable outbox worker + bounded retries + crash reclaim | Verified |
+| Inclusive UTC periods + late adjustments | Verified |
+| Versioned pricing + invoice line traceability | Verified |
 | Mock charge / refund + idempotency keys | Verified |
-| Webhook dedupe | Verified |
-| Shadow pricing compare | Verified |
-| Stripe live charges | Stub only (`PAYMENT_PROVIDER=stripe` raises) |
-| 100k ingest benchmark | Script ready (`scripts/benchmark_100k.py`) — run locally; results are machine-specific |
+| Webhook dedupe + signature reject | Verified |
+| Shadow classify + cutover gate + rollback | Verified |
+| Postgres uniqueness / concurrency tests | Verified when Postgres available / CI |
+| Stripe test-mode | Code path present; **unverified without keys** |
+| 100k ingest benchmark | Script + local JSON; machine-specific |
 
 ## Quick start
 
@@ -30,7 +31,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-Optional Compose (Postgres + Redis + API):
+Compose (Postgres + API + durable worker; `OUTBOX_SYNC=false`):
 
 ```bash
 docker compose up --build
@@ -39,11 +40,12 @@ docker compose up --build
 ## Demo flow
 
 1. `POST /auth/register` → Bearer token  
-2. Create customer, metric, plan (flat or tiered), subscription  
-3. `POST /usage/events` with string quantities (`"1500"`, not floats)  
+2. Create customer, metric (`tts_chars` or `api_calls`), plan, subscription  
+3. `POST /usage/events` with string quantities and timezone-aware `occurred_at`  
 4. `POST /invoices/generate`  
 5. `POST /invoices/{id}/charge` with `idempotency_key`  
-6. Optional: `POST /invoices/shadow-compare` against a new pricing version  
+6. Optional late event → adjustment without total rewrite  
+7. Optional `POST /invoices/shadow-compare` then `/pricing/cutover`
 
 OpenAPI: `http://localhost:8000/docs`
 
@@ -52,30 +54,31 @@ OpenAPI: `http://localhost:8000/docs`
 ```bash
 cd backend
 pytest -q
+ruff check app tests
 ```
 
-## Benchmark (optional)
+Postgres integration (optional local):
 
 ```bash
-python scripts/benchmark_100k.py 100000
-# writes benchmarks/latest.json — not a production SLA claim
+docker compose up -d db
+# Windows PowerShell:
+$env:TEST_DATABASE_URL="postgresql+psycopg://billing:billing@127.0.0.1:5433/billing"
+pytest -q -m postgres
 ```
-
-## Design notes
-
-- Money helpers mirror FinOps Decimal patterns (`app/money.py`).
-- Usage uniqueness: `(organization_id, event_id)`.
-- Webhook uniqueness: `(organization_id, provider, provider_event_id)`.
-- Payment uniqueness: `(organization_id, idempotency_key)`.
-- Multi-tenant isolation via JWT `org` claim on authenticated routes.
 
 ## Docs
 
 - [Architecture](docs/architecture.md)
-- [API map](docs/api.md)
-- [Evidence / verification](docs/evidence.md)
+- [Financial invariants / delivery semantics](docs/financial-invariants.md)
+- [Migration runbook](docs/migration-runbook.md)
+- [Incorrect-bill case study](docs/incorrect-bill-case-study.md)
+- [Evidence report](docs/evidence.md)
+- [5-minute interview demo](docs/interview-demo-5min.md)
+- [Requirements → evidence](docs/requirements-to-evidence.md)
+- [Résumé bullets](docs/resume-bullets.md)
 
 ## Constraints
 
-- No secrets committed. No live Stripe without keys.  
-- Not published / pushed unless you explicitly approve.  
+- No secrets committed. No live Stripe claims without keys + recorded evidence.  
+- Do not publish/push/deploy unless explicitly requested.  
+- Not end-to-end exactly-once — at-least-once with idempotent effects.

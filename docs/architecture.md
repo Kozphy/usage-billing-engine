@@ -2,44 +2,40 @@
 
 ```
 Client / meter
-    │
+    │  (at-least-once)
     ▼
-FastAPI (JWT tenant) ──► UsageEvent (idempotent event_id)
-    │                         │
-    │                         ▼
-    │                    OutboxMessage (usage.ingested)
-    │                         │
-    │                         ▼
-    │                    UsageAggregate (calendar month)
+FastAPI + JWT tenant + correlation ID
     │
-    ├── PricingPlan / PricingVersion / PricingComponent
-    │         (flat_per_unit | tiered)
+    ├─► UsageEvent  (uq org+event_id, content_hash, received_at, schema_version)
+    │         │
+    │         ▼  same DB transaction
+    │    OutboxMessage (pending)
+    │         │
+    │         ▼  durable worker (FOR UPDATE SKIP LOCKED)
+    │    UsageAggregate (recomputed; replay-safe)
     │
-    ├── Invoice + InvoiceLine  ◄── sum events × versioned rates + base_fee
+    ├─ PricingPlan / PricingVersion / PricingComponent
     │
-    ├── PaymentAttempt (idempotency_key) → Mock | Stripe stub
-    ├── Refund
-    ├── WebhookEvent (provider event dedupe)
-    └── ShadowInvoice (alternate version delta)
+    ├─ Invoice + InvoiceLine (immutable after finalize)
+    │         └─ InvoiceAdjustment (late usage; does not rewrite totals)
+    │
+    ├─ PaymentAttempt (idempotency_key) → Mock | Stripe test-mode
+    ├─ WebhookEvent (provider event dedupe + signature check)
+    ├─ ShadowInvoice (classification + cutover gate)
+    └─ PricingCutover / AuditLog
 ```
 
-## Money
+## Why this durable design
 
-All accounting amounts go through `money()` / `usage_qty()`. Floats raise `TypeError` at the boundary.
+For portfolio scope, a **transactional outbox in Postgres** plus a small worker beats Kafka/Celery:
 
-## Reliability patterns
+- Ingest and outbox enqueue commit together → no “acked but lost” window.
+- Workers claim with `SKIP LOCKED` → concurrent drain without double apply.
+- Aggregates are recomputed from events → at-least-once outbox is safe.
+- Terminal failures are visible (`failed` + `last_error`) and replay is explicit.
 
-| Pattern | Implementation |
-|---|---|
-| Idempotent ingest | Unique `(org, event_id)` |
-| Transactional outbox | `outbox_messages` + sync drain (`OUTBOX_SYNC=true`) |
-| Payment idempotency | Unique `(org, idempotency_key)` |
-| Webhook replay safety | Unique `(org, provider, provider_event_id)` |
-| Pricing migration rehearsal | `shadow_invoices` compare without mutating live invoice |
-| Audit | Append-only `audit_logs` |
+## Non-goals
 
-## Non-goals (this MVP)
-
-- Real Stripe Settlement / Tax / Entitlements UI
-- Multi-currency FX
-- Distributed Celery workers (Redis present for future; sync outbox used now)
+- Kubernetes, Kafka, multi-provider orchestration, large frontend
+- Real tax engines, FX, card storage
+- Production Stripe claims without keys/evidence

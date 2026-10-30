@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
+import random
 from decimal import Decimal
 from typing import Protocol
+from urllib.parse import urlencode
 
+import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.logging_setup import get_logger
 from app.money import money
 from app.models import Invoice, InvoiceStatus, PaymentAttempt, Refund, utcnow
 from app.services import audit
+
+log = get_logger(__name__)
 
 
 class PaymentProvider(Protocol):
@@ -37,6 +43,8 @@ class PaymentProvider(Protocol):
 
 
 class MockPaymentProvider:
+    """Deterministic local fake for offline tests. Never talks to a network."""
+
     name = "mock"
 
     def charge(
@@ -47,11 +55,15 @@ class MockPaymentProvider:
         currency: str,
         idempotency_key: str,
     ) -> dict:
+        settings = get_settings()
+        if settings.mock_payment_timeout_rate > 0 and random.random() < settings.mock_payment_timeout_rate:
+            raise TimeoutError("simulated mock provider timeout")
         return {
             "provider_payment_id": f"mock_pay_{idempotency_key[:16]}",
             "status": "succeeded",
             "amount": str(money(amount)),
             "currency": currency,
+            "mode": "fake",
         }
 
     def refund(self, *, invoice: Invoice, amount: Decimal, reason: str) -> dict:
@@ -60,13 +72,19 @@ class MockPaymentProvider:
             "status": "succeeded",
             "amount": str(money(amount)),
             "reason": reason,
+            "mode": "fake",
         }
 
 
 class StripeAdapter:
-    """Thin adapter — requires STRIPE_SECRET_KEY. Without it, raises clearly."""
+    """Stripe test-mode via HTTPS when STRIPE_SECRET_KEY is set.
+
+    Without a key this adapter refuses. Card data is never collected or stored —
+    PaymentIntents are created server-side with amount + currency only.
+    """
 
     name = "stripe"
+    api_base = "https://api.stripe.com/v1"
 
     def charge(
         self,
@@ -81,12 +99,70 @@ class StripeAdapter:
             raise RuntimeError(
                 "STRIPE_SECRET_KEY not configured; use PAYMENT_PROVIDER=mock for local demos"
             )
-        # Intentional stub: real Stripe SDK call would go here when keys are present.
-        # Verified path is mock until keys exist (portfolio constraint).
-        raise RuntimeError("Stripe live charge not enabled in this portfolio build")
+        # Stripe expects smallest currency unit (cents for USD).
+        cents = int((money(amount) * 100).to_integral_value())
+        data = {
+            "amount": str(cents),
+            "currency": currency.lower(),
+            "confirm": "true",
+            "payment_method": "pm_card_visa",  # Stripe test PM — not a real card PAN
+            "metadata[invoice_id]": invoice.id,
+            "metadata[mode]": "test",
+        }
+        try:
+            response = httpx.post(
+                f"{self.api_base}/payment_intents",
+                content=urlencode(data),
+                headers={
+                    "Authorization": f"Bearer {settings.stripe_secret_key}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Idempotency-Key": idempotency_key,
+                },
+                timeout=15.0,
+            )
+        except httpx.TimeoutException as exc:
+            raise TimeoutError("stripe provider timeout") from exc
+        if response.status_code >= 400:
+            raise RuntimeError(f"stripe error: {response.status_code} {response.text[:200]}")
+        body = response.json()
+        status = body.get("status", "failed")
+        mapped = "succeeded" if status == "succeeded" else status
+        return {
+            "provider_payment_id": body.get("id"),
+            "status": mapped,
+            "amount": str(money(amount)),
+            "currency": currency,
+            "mode": "stripe_test",
+            "raw_status": status,
+        }
 
     def refund(self, *, invoice: Invoice, amount: Decimal, reason: str) -> dict:
-        raise RuntimeError("Stripe live refund not enabled in this portfolio build")
+        settings = get_settings()
+        if not settings.stripe_secret_key:
+            raise RuntimeError("STRIPE_SECRET_KEY not configured")
+        cents = int((money(amount) * 100).to_integral_value())
+        data = {"amount": str(cents), "reason": "requested_by_customer"}
+        if invoice.provider_invoice_id:
+            data["payment_intent"] = invoice.provider_invoice_id
+        response = httpx.post(
+            f"{self.api_base}/refunds",
+            content=urlencode(data),
+            headers={
+                "Authorization": f"Bearer {settings.stripe_secret_key}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=15.0,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"stripe refund error: {response.status_code}")
+        body = response.json()
+        return {
+            "provider_refund_id": body.get("id"),
+            "status": body.get("status", "succeeded"),
+            "amount": str(money(amount)),
+            "reason": reason,
+            "mode": "stripe_test",
+        }
 
 
 def get_provider() -> PaymentProvider:
@@ -118,7 +194,7 @@ def charge_invoice(
         if existing:
             return existing
         raise ValueError("invoice already paid")
-    if invoice.status not in {InvoiceStatus.open, InvoiceStatus.draft}:
+    if invoice.status not in {InvoiceStatus.open, InvoiceStatus.finalized}:
         raise ValueError(f"cannot charge invoice in status {invoice.status}")
 
     prior = db.scalar(
@@ -139,22 +215,52 @@ def charge_invoice(
         currency=invoice.currency,
         status="pending",
         idempotency_key=idempotency_key,
+        correlation_id=invoice.correlation_id,
     )
     db.add(attempt)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.flush()
+    except IntegrityError:
+        prior = db.scalar(
+            select(PaymentAttempt).where(
+                PaymentAttempt.organization_id == organization_id,
+                PaymentAttempt.idempotency_key == idempotency_key,
+            )
+        )
+        if prior is None:
+            raise
+        return prior
 
-    result = provider.charge(
-        invoice=invoice,
-        amount=money(invoice.total),
-        currency=invoice.currency,
-        idempotency_key=idempotency_key,
-    )
-    attempt.provider_payment_id = result.get("provider_payment_id")
-    attempt.status = result.get("status", "failed")
-    if attempt.status == "succeeded":
-        invoice.status = InvoiceStatus.paid
-        invoice.paid_at = utcnow()
-        invoice.provider_invoice_id = attempt.provider_payment_id
+    try:
+        result = provider.charge(
+            invoice=invoice,
+            amount=money(invoice.total),
+            currency=invoice.currency,
+            idempotency_key=idempotency_key,
+        )
+        attempt.provider_payment_id = result.get("provider_payment_id")
+        attempt.status = result.get("status", "failed")
+        if attempt.status == "succeeded":
+            # Payment state only — invoice line totals remain the finalized calculation.
+            invoice.status = InvoiceStatus.paid
+            invoice.paid_at = utcnow()
+            invoice.provider_invoice_id = attempt.provider_payment_id
+    except TimeoutError as exc:
+        attempt.status = "timed_out"
+        attempt.last_error = str(exc)
+        log.warning(
+            "payment_timeout",
+            extra={
+                "payment_attempt_id": attempt.id,
+                "invoice_id": invoice.id,
+                "organization_id": organization_id,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        attempt.status = "failed"
+        attempt.last_error = str(exc)
+
     audit.write_audit(
         db,
         organization_id=organization_id,
@@ -162,7 +268,11 @@ def charge_invoice(
         action="payment.charge",
         entity_type="payment_attempt",
         entity_id=attempt.id,
-        details={"status": attempt.status, "invoice_id": invoice.id},
+        details={
+            "status": attempt.status,
+            "invoice_id": invoice.id,
+            "correlation_id": attempt.correlation_id,
+        },
     )
     return attempt
 
@@ -209,7 +319,7 @@ def refund_invoice(
 
 def verify_stripe_signature(payload: bytes, signature_header: str, secret: str) -> bool:
     """Minimal Stripe-like HMAC verification for demo webhooks (t=...,v1=...)."""
-    parts = dict(item.split("=", 1) for item in signature_header.split(",") if "=" in item)
+    parts = dict(item.split("=", 1) for item in signature_header.split(",") if item.count("=") == 1)
     timestamp = parts.get("t")
     signature = parts.get("v1")
     if not timestamp or not signature:
@@ -226,6 +336,7 @@ def mark_paid_from_webhook(
     provider_payment_id: str,
     payload: dict,
 ) -> Invoice | None:
+    """Idempotent payment status update. Out-of-order: paid wins; duplicates no-op."""
     attempt = db.scalar(
         select(PaymentAttempt).where(
             PaymentAttempt.organization_id == organization_id,
@@ -233,14 +344,16 @@ def mark_paid_from_webhook(
         )
     )
     if attempt is None:
-        # Fallback: invoice id in payload
         invoice_id = payload.get("invoice_id")
         invoice = db.get(Invoice, invoice_id) if invoice_id else None
     else:
         invoice = db.get(Invoice, attempt.invoice_id)
-        attempt.status = "succeeded"
+        if attempt.status != "succeeded":
+            attempt.status = "succeeded"
     if invoice is None:
         return None
+    if invoice.status == InvoiceStatus.paid:
+        return invoice
     invoice.status = InvoiceStatus.paid
     invoice.paid_at = utcnow()
     invoice.provider_invoice_id = provider_payment_id

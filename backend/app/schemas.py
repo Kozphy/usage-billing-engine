@@ -115,10 +115,11 @@ class SubscriptionCreate(BaseModel):
 
 class UsageEventIn(BaseModel):
     event_id: str = Field(min_length=1, max_length=128)
-    customer_external_ref: str
-    metric_code: str
+    customer_external_ref: str = Field(min_length=1, max_length=200)
+    metric_code: str = Field(min_length=1, max_length=64)
     quantity: Decimal
     occurred_at: datetime
+    schema_version: int = Field(default=1, ge=1, le=100)
     properties: dict[str, Any] | None = None
 
     @field_validator("quantity", mode="before")
@@ -126,6 +127,13 @@ class UsageEventIn(BaseModel):
     def no_float_qty(cls, v: Any) -> Any:
         if isinstance(v, float):
             raise TypeError("float quantity rejected; pass string or Decimal")
+        return v
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("occurred_at must be timezone-aware (prefer UTC)")
         return v
 
 
@@ -138,6 +146,10 @@ class UsageEventOut(BaseModel):
     event_id: str
     status: str
     duplicate: bool = False
+    conflict: bool = False
+    received_at: datetime | None = None
+    correlation_id: str | None = None
+    schema_version: int | None = None
 
 
 class InvoiceGenerateIn(BaseModel):
@@ -155,6 +167,18 @@ class InvoiceLineOut(BaseModel):
     quantity: Decimal
     unit_price: Decimal
     amount: Decimal
+    pricing_version_id: str | None = None
+    source_event_ids: list[str] | None = None
+
+
+class InvoiceAdjustmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    usage_event_id: str
+    amount: Decimal
+    reason: str
+    correlation_id: str
 
 
 class InvoiceOut(BaseModel):
@@ -167,8 +191,12 @@ class InvoiceOut(BaseModel):
     period_start: date
     period_end: date
     subtotal: Decimal
+    tax_total: Decimal = Decimal("0")
     total: Decimal
+    correlation_id: str | None = None
+    finalized_at: datetime | None = None
     lines: list[InvoiceLineOut]
+    adjustments: list[InvoiceAdjustmentOut] = []
 
 
 class ChargeIn(BaseModel):
@@ -190,6 +218,22 @@ class RefundIn(BaseModel):
 class ShadowCompareIn(BaseModel):
     invoice_id: str
     alternate_pricing_version_id: str
+    # Optional absolute expected delta for this invoice (marks expected_delta).
+    expected_delta: Decimal | None = None
+
+    @field_validator("expected_delta", mode="before")
+    @classmethod
+    def no_float_delta(cls, v: Any) -> Any:
+        if isinstance(v, float):
+            raise TypeError("float expected_delta rejected")
+        return v
+
+
+class CutoverIn(BaseModel):
+    plan_code: str
+    to_pricing_version_id: str
+    # Require all shadows for listed invoices to allow cutover.
+    invoice_ids: list[str]
 
 
 class ReportSummaryOut(BaseModel):

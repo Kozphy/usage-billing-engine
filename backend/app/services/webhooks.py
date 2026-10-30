@@ -23,7 +23,9 @@ def ingest_webhook(
     signature_header: str | None = None,
     webhook_secret: str | None = None,
 ) -> tuple[WebhookEvent, bool]:
-    if provider == "stripe" and signature_header and webhook_secret and raw_body is not None:
+    if provider == "stripe":
+        if not signature_header or not webhook_secret or raw_body is None:
+            raise PermissionError("stripe webhook signature required")
         if not verify_stripe_signature(raw_body, signature_header, webhook_secret):
             raise PermissionError("invalid webhook signature")
 
@@ -47,9 +49,9 @@ def ingest_webhook(
     )
     db.add(row)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.flush()
     except IntegrityError:
-        db.rollback()
         existing = db.scalar(
             select(WebhookEvent).where(
                 WebhookEvent.organization_id == organization_id,

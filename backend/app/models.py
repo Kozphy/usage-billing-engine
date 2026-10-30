@@ -38,13 +38,14 @@ class InvoiceStatus(str, enum.Enum):
     paid = "paid"
     void = "void"
     uncollectible = "uncollectible"
+    finalized = "finalized"  # immutable accounting snapshot; payment may follow
 
 
 class OutboxStatus(str, enum.Enum):
     pending = "pending"
     processing = "processing"
     done = "done"
-    failed = "failed"
+    failed = "failed"  # terminal after max attempts; replay is explicit
 
 
 class Organization(Base):
@@ -165,6 +166,7 @@ class UsageEvent(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "event_id", name="uq_usage_event_id"),
         Index("ix_usage_customer_metric_ts", "customer_id", "metric_id", "occurred_at"),
+        Index("ix_usage_correlation", "correlation_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -174,10 +176,15 @@ class UsageEvent(Base):
     event_id: Mapped[str] = mapped_column(String(128), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(24, 6), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Server-assigned receive time (distinct from client occurred_at).
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, default=new_id)
     properties_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    # pending | applied | discarded
-    status: Mapped[str] = mapped_column(String(32), default="applied")
+    # pending | applied | late | discarded
+    status: Mapped[str] = mapped_column(String(32), default="pending")
 
 
 class UsageAggregate(Base):
@@ -205,7 +212,16 @@ class UsageAggregate(Base):
 
 class Invoice(Base):
     __tablename__ = "invoices"
-    __table_args__ = (UniqueConstraint("organization_id", "number", name="uq_invoice_number"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "number", name="uq_invoice_number"),
+        UniqueConstraint(
+            "organization_id",
+            "customer_id",
+            "period_start",
+            "period_end",
+            name="uq_invoice_period",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
@@ -218,12 +234,17 @@ class Invoice(Base):
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal("0"))
+    # Tax extension point: always zero in this build; never silently invent tax.
+    tax_total: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal("0"))
     provider_invoice_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, default=new_id)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     lines: Mapped[list[InvoiceLine]] = relationship(back_populates="invoice", cascade="all, delete-orphan")
+    adjustments: Mapped[list["InvoiceAdjustment"]] = relationship(back_populates="invoice")
 
 
 class InvoiceLine(Base):
@@ -232,16 +253,44 @@ class InvoiceLine(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), nullable=False)
     metric_id: Mapped[str | None] = mapped_column(ForeignKey("metrics.id"), nullable=True)
+    pricing_version_id: Mapped[str | None] = mapped_column(
+        ForeignKey("pricing_versions.id"), nullable=True
+    )
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(24, 6), default=Decimal("0"))
     unit_price: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal("0"))
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal("0"))
+    # Traceability: event ids contributing to this line (JSON array of strings).
+    source_event_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")
 
 
+class InvoiceAdjustment(Base):
+    """Late usage after finalization — never mutates the finalized invoice totals."""
+
+    __tablename__ = "invoice_adjustments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "usage_event_id", name="uq_adjustment_event"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), nullable=False)
+    usage_event_id: Mapped[str] = mapped_column(ForeignKey("usage_events.id"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), default="late_usage")
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, default=new_id)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="adjustments")
+
+
 class PaymentAttempt(Base):
+    """Payment status is intentionally separate from invoice calculation totals."""
+
     __tablename__ = "payment_attempts"
+    __table_args__ = (UniqueConstraint("organization_id", "idempotency_key", name="uq_pay_idem"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
@@ -250,11 +299,12 @@ class PaymentAttempt(Base):
     provider_payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
+    # pending | succeeded | failed | timed_out
     status: Mapped[str] = mapped_column(String(32), default="pending")
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(64), nullable=False, default=new_id)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-    __table_args__ = (UniqueConstraint("organization_id", "idempotency_key", name="uq_pay_idem"),)
 
 
 class Refund(Base):
@@ -287,6 +337,7 @@ class WebhookEvent(Base):
 
 class OutboxMessage(Base):
     __tablename__ = "outbox_messages"
+    __table_args__ = (Index("ix_outbox_status_created", "status", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
@@ -294,7 +345,11 @@ class OutboxMessage(Base):
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[OutboxStatus] = mapped_column(Enum(OutboxStatus), default=OutboxStatus.pending)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    locked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -325,4 +380,24 @@ class ShadowInvoice(Base):
     pricing_version_id: Mapped[str] = mapped_column(ForeignKey("pricing_versions.id"), nullable=False)
     total: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     delta: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
+    # match | expected_delta | unexpected_delta
+    classification: Mapped[str] = mapped_column(String(32), default="match")
+    cutover_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PricingCutover(Base):
+    """Record of controlled cutover / rollback decisions (does not rewrite finalized invoices)."""
+
+    __tablename__ = "pricing_cutovers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("pricing_plans.id"), nullable=False)
+    from_version_id: Mapped[str] = mapped_column(ForeignKey("pricing_versions.id"), nullable=False)
+    to_version_id: Mapped[str] = mapped_column(ForeignKey("pricing_versions.id"), nullable=False)
+    # cutover | rollback | blocked
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    shadow_report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

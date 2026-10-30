@@ -24,9 +24,11 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://billing:billing@db:5432/billing
       REDIS_URL: redis://redis:6379/0
-      OUTBOX_SYNC: "true"
+      OUTBOX_SYNC: "false"
       PAYMENT_PROVIDER: mock
       SECRET_KEY: local-compose-secret-not-for-prod
+      WORKER_ID: api
+      LOG_LEVEL: INFO
     ports:
       - "8000:8000"
     depends_on:
@@ -34,3 +36,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+
+  worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://billing:billing@db:5432/billing
+      REDIS_URL: redis://redis:6379/0
+      OUTBOX_SYNC: "false"
+      PAYMENT_PROVIDER: mock
+      SECRET_KEY: local-compose-secret-not-for-prod
+      WORKER_ID: worker-1
+      LOG_LEVEL: INFO
+    depends_on:
+      db:
+        condition: service_healthy

@@ -5,11 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import Base, engine
+from app.logging_setup import configure_logging
+from app.middleware import CorrelationIdMiddleware
 from app.routers import auth, billing, catalog, usage
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    settings = get_settings()
+    configure_logging(settings.log_level)
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -17,6 +21,7 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -36,6 +41,8 @@ def create_app() -> FastAPI:
             "environment": settings.environment,
             "payment_provider": settings.payment_provider,
             "money": "Decimal",
+            "outbox_sync": settings.outbox_sync,
+            "database": "postgres" if settings.is_postgres else "other",
         }
 
     return app

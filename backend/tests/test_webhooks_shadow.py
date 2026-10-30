@@ -14,7 +14,7 @@ def test_webhook_idempotency_and_shadow(client, auth_headers):
         headers=headers,
         json={"code": "api_calls", "name": "API Calls", "unit": "call"},
     )
-    plan = client.post(
+    client.post(
         "/plans",
         headers=headers,
         json={
@@ -25,7 +25,7 @@ def test_webhook_idempotency_and_shadow(client, auth_headers):
                 {"metric_code": "api_calls", "model": "flat_per_unit", "unit_price": "0.1000"}
             ],
         },
-    ).json()
+    )
     client.post(
         "/subscriptions",
         headers=headers,

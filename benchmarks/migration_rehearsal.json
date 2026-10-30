@@ -1,0 +1,30 @@
+{
+  "ran_at": "2026-10-30T07:29:03.329810+00:00",
+  "before": {
+    "invoice_id": "ebf87a0e-e0c6-45e8-a766-cd2a4d40524d",
+    "total": "1.0000",
+    "pricing_version_id": "5dd51808-9751-4c13-92fe-4509b14dc44c",
+    "subscription_version_id": "5dd51808-9751-4c13-92fe-4509b14dc44c"
+  },
+  "unexpected_shadow": {
+    "delta": "1.0000",
+    "classification": "unexpected_delta",
+    "cutover_allowed": false
+  },
+  "blocked_cutover_error": "one or more invoices have unexpected shadow deltas",
+  "expected_shadow": {
+    "delta": "1.0000",
+    "classification": "expected_delta",
+    "cutover_allowed": true
+  },
+  "after_cutover": {
+    "invoice_total_unchanged": "1.0000",
+    "cutover_id": "cd717d1a-c8c6-4d4e-8c07-f120036a5f63",
+    "action": "cutover"
+  },
+  "rollback_action": "rollback",
+  "notes": [
+    "Finalized invoice total unchanged across cutover/rollback",
+    "No payment attempts created in this rehearsal"
+  ]
+}
