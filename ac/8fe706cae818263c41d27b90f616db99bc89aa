@@ -1,0 +1,115 @@
+.gitignore
+  s_6a68cda50f84b0::t_ba6ec142ddea5b 5
+  s_6a68cda50f84b0::t_0d1f3746698c98 2-4
+  s_6a68cda50f84b0::t_2f2de3b41c6f4b 6-8
+  s_6a68cda50f84b0::t_a445c03d6ff178 1,9-14
+docs/evidence.md
+  s_6a68cda50f84b0::t_002176cc410bfa 21
+  s_6a68cda50f84b0::t_5ae087362cb922 18-20
+  s_6a68cda50f84b0::t_72a4ccaffdb14c 22-24
+  s_6a68cda50f84b0::t_dafb71710fdc60 1-17,25-26
+.github/workflows/ci.yml
+  s_6a68cda50f84b0::t_de7c25bc745533 1-28
+README.md
+  s_6a68cda50f84b0::t_f579c1a000d41a 1-81
+backend/.env.example
+  s_6a68cda50f84b0::t_fdfcc6888857e3 1-11
+backend/Dockerfile
+  s_6a68cda50f84b0::t_a33df3119b9652 1-9
+backend/alembic.ini
+  s_6a68cda50f84b0::t_30059ad2ef3b0e 1-35
+backend/alembic/env.py
+  s_6a68cda50f84b0::t_2bb2b4a71cdb40 1-40
+backend/alembic/script.py.mako
+  s_6a68cda50f84b0::t_a8a671a5cd50a3 1-25
+backend/alembic/versions/0001_initial.py
+  s_6a68cda50f84b0::t_0ae400fd84c856 1-24
+backend/app/__init__.py
+  s_6a68cda50f84b0::t_c620de7f961902 1
+backend/app/config.py
+  s_6a68cda50f84b0::t_7e9e1d85217d6e 1-29
+backend/app/db.py
+  s_6a68cda50f84b0::t_cccf1e1c59f3b4 1-39
+backend/app/main.py
+  s_6a68cda50f84b0::t_1896fc571a0bbd 1-44
+backend/app/models.py
+  s_6a68cda50f84b0::t_526e59822fe69b 1-328
+backend/app/money.py
+  s_6a68cda50f84b0::t_bbe9ff4f99d5d7 1-49
+backend/app/routers/__init__.py
+  s_6a68cda50f84b0::t_b19f58d50ae8bd 1
+backend/app/routers/auth.py
+  s_6a68cda50f84b0::t_c4e90c4155b465 1-61
+backend/app/routers/billing.py
+  s_6a68cda50f84b0::t_03c6f13f8578db 1-250
+backend/app/routers/catalog.py
+  s_6a68cda50f84b0::t_1eb35d1e0ef504 1-189
+backend/app/routers/usage.py
+  s_6a68cda50f84b0::t_e247660b2ed3ca 1-61
+backend/app/schemas.py
+  s_6a68cda50f84b0::t_d8a0c6c521f700 1-201
+backend/app/security.py
+  s_6a68cda50f84b0::t_08c17985a39eca 1-54
+backend/app/services/__init__.py
+  s_6a68cda50f84b0::t_5d5c3b58cd9a1e 1
+backend/app/services/audit.py
+  s_6a68cda50f84b0::t_a7790b546bfd27 1-30
+backend/app/services/invoicing.py
+  s_6a68cda50f84b0::t_00840b455ecb7e 1-179
+backend/app/services/metering.py
+  s_6a68cda50f84b0::t_6b0221274c300f 1-177
+backend/app/services/outbox.py
+  s_6a68cda50f84b0::t_b3f1f92f4bd5b0 1-61
+backend/app/services/payments.py
+  s_6a68cda50f84b0::t_4d05ab59012ad0 1-247
+backend/app/services/pricing.py
+  s_6a68cda50f84b0::t_3d2611fad6a6ae 1-171
+backend/app/services/replay.py
+  s_6a68cda50f84b0::t_c660546cac523f 1-37
+backend/app/services/reporting.py
+  s_6a68cda50f84b0::t_1d064c037aa07f 1-41
+backend/app/services/webhooks.py
+  s_6a68cda50f84b0::t_1da00798fce68c 1-86
+backend/pyproject.toml
+  s_6a68cda50f84b0::t_004bbe838ab60b 1-48
+backend/tests/conftest.py
+  s_6a68cda50f84b0::t_2a4cbf892b4430 1-63
+backend/tests/test_metering_idempotency.py
+  s_6a68cda50f84b0::t_d7360f289c07a4 1-59
+backend/tests/test_money.py
+  s_6a68cda50f84b0::t_8ea620c1dc42a4 1-25
+backend/tests/test_pricing_invoice.py
+  s_6a68cda50f84b0::t_98d6545c620e6e 1-118
+backend/tests/test_pricing_properties.py
+  s_6a68cda50f84b0::t_0a72393f8fb00f 1-26
+backend/tests/test_webhooks_shadow.py
+  s_6a68cda50f84b0::t_abcbf8d613e6b9 1-99
+benchmarks/latest.json
+  s_6a68cda50f84b0::t_f16e399af44e9b 1-14
+docker-compose.yml
+  s_6a68cda50f84b0::t_0cbbca75adb271 1-36
+docs/api.md
+  s_6a68cda50f84b0::t_52e8c95032af0b 1-23
+docs/architecture.md
+  s_6a68cda50f84b0::t_2ae7888173d3fa 1-45
+docs/portfolio-narrative.md
+  s_6a68cda50f84b0::t_33f4d0cc40cdc3 1-21
+scripts/benchmark_100k.py
+  s_6a68cda50f84b0::t_e2c1d96d7be8ad 1-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac8fe706cae818263c41d27b90f616db99bc89aa",
+  "prompts": {},
+  "sessions": {
+    "s_6a68cda50f84b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2d32776d-056b-4e69-8cb6-c19738fd2467",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
