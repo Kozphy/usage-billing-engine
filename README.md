@@ -8,7 +8,7 @@ Built for payments-engineering interview themes (Decimal money, idempotent inges
 
 | Capability | State |
 |---|---|
-| Decimal money (no float) | Verified |
+| Decimal money, ISO 4217 minor units, one round per invoice line | Verified |
 | Idempotent ingest + content-hash conflict (409) | Verified |
 | Durable outbox worker + bounded retries + crash reclaim | Verified |
 | Inclusive UTC periods + late adjustments | Verified |

@@ -16,11 +16,31 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.logging_setup import get_logger
-from app.money import money
+from app.money import invoice_amount, normalize_currency, to_minor_units
 from app.models import Invoice, InvoiceStatus, PaymentAttempt, Refund, utcnow
 from app.services import audit
 
 log = get_logger(__name__)
+
+
+def minor_unit_charge(amount: Decimal, currency: str) -> tuple[int, str]:
+    """Convert a charge or refund into provider minor units.
+
+    Args:
+        amount: Major-unit amount. Rounded once to the currency quantum.
+        currency: ISO 4217 alphabetic code.
+
+    Returns:
+        ``(minor_units, canonical_currency)``. ``minor_units`` is the integer
+        sent as the provider ``amount`` (USD cents, JPY yen, KWD fils, TWD
+        cents per ISO exponent 2).
+
+    Raises:
+        UnknownCurrencyError: If ``currency`` is unknown.
+        TypeError: If ``amount`` is a float.
+    """
+    code = normalize_currency(currency)
+    return to_minor_units(amount, code), code
 
 
 class PaymentProvider(Protocol):
@@ -60,7 +80,7 @@ class PaymentProvider(Protocol):
 
         Args:
             invoice: Paid invoice.
-            amount: Quantized refund amount.
+            amount: Major-unit refund amount, sent as integer minor units.
             reason: Human-readable refund reason.
 
         Returns:
@@ -99,11 +119,13 @@ class MockPaymentProvider:
         settings = get_settings()
         if settings.mock_payment_timeout_rate > 0 and random.random() < settings.mock_payment_timeout_rate:
             raise TimeoutError("simulated mock provider timeout")
+        minor, code = minor_unit_charge(amount, currency)
         return {
             "provider_payment_id": f"mock_pay_{idempotency_key[:16]}",
             "status": "succeeded",
-            "amount": str(money(amount)),
-            "currency": currency,
+            "amount": str(minor),
+            "amount_minor": minor,
+            "currency": code,
             "mode": "fake",
         }
 
@@ -112,16 +134,19 @@ class MockPaymentProvider:
 
         Args:
             invoice: Paid invoice.
-            amount: Quantized refund amount.
+            amount: Major-unit refund amount, sent as integer minor units.
             reason: Human-readable refund reason.
 
         Returns:
             Fake provider refund result with ``mode=fake``.
         """
+        minor, code = minor_unit_charge(amount, invoice.currency)
         return {
             "provider_refund_id": f"mock_ref_{invoice.id[:8]}",
             "status": "succeeded",
-            "amount": str(money(amount)),
+            "amount": str(minor),
+            "amount_minor": minor,
+            "currency": code,
             "reason": reason,
             "mode": "fake",
         }
@@ -149,7 +174,7 @@ class StripeAdapter:
 
         Args:
             invoice: Invoice being charged.
-            amount: Quantized charge amount (converted to cents for USD).
+            amount: Major-unit charge amount, sent as integer minor units.
             currency: ISO currency code.
             idempotency_key: Stripe ``Idempotency-Key`` header value.
 
@@ -165,11 +190,10 @@ class StripeAdapter:
             raise RuntimeError(
                 "STRIPE_SECRET_KEY not configured; use PAYMENT_PROVIDER=mock for local demos"
             )
-        # Stripe expects smallest currency unit (cents for USD).
-        cents = int((money(amount) * 100).to_integral_value())
+        minor, code = minor_unit_charge(amount, currency)
         data = {
-            "amount": str(cents),
-            "currency": currency.lower(),
+            "amount": str(minor),
+            "currency": code.lower(),
             "confirm": "true",
             "payment_method": "pm_card_visa",  # Stripe test PM — not a real card PAN
             "metadata[invoice_id]": invoice.id,
@@ -196,8 +220,9 @@ class StripeAdapter:
         return {
             "provider_payment_id": body.get("id"),
             "status": mapped,
-            "amount": str(money(amount)),
-            "currency": currency,
+            "amount": str(minor),
+            "amount_minor": minor,
+            "currency": code,
             "mode": "stripe_test",
             "raw_status": status,
         }
@@ -207,7 +232,7 @@ class StripeAdapter:
 
         Args:
             invoice: Paid invoice with ``provider_invoice_id`` when available.
-            amount: Quantized refund amount.
+            amount: Major-unit refund amount, sent as integer minor units.
             reason: Human-readable refund reason.
 
         Returns:
@@ -219,8 +244,8 @@ class StripeAdapter:
         settings = get_settings()
         if not settings.stripe_secret_key:
             raise RuntimeError("STRIPE_SECRET_KEY not configured")
-        cents = int((money(amount) * 100).to_integral_value())
-        data = {"amount": str(cents), "reason": "requested_by_customer"}
+        minor, code = minor_unit_charge(amount, invoice.currency)
+        data = {"amount": str(minor), "reason": "requested_by_customer"}
         if invoice.provider_invoice_id:
             data["payment_intent"] = invoice.provider_invoice_id
         response = httpx.post(
@@ -238,7 +263,9 @@ class StripeAdapter:
         return {
             "provider_refund_id": body.get("id"),
             "status": body.get("status", "succeeded"),
-            "amount": str(money(amount)),
+            "amount": str(minor),
+            "amount_minor": minor,
+            "currency": code,
             "reason": reason,
             "mode": "stripe_test",
         }
@@ -308,12 +335,14 @@ def charge_invoice(
         return prior
 
     provider = get_provider()
+    currency = normalize_currency(invoice.currency)
+    posted = invoice_amount(invoice.total, currency)
     attempt = PaymentAttempt(
         organization_id=organization_id,
         invoice_id=invoice.id,
         provider=provider.name,
-        amount=money(invoice.total),
-        currency=invoice.currency,
+        amount=posted,
+        currency=currency,
         status="pending",
         idempotency_key=idempotency_key,
         correlation_id=invoice.correlation_id,
@@ -336,8 +365,8 @@ def charge_invoice(
     try:
         result = provider.charge(
             invoice=invoice,
-            amount=money(invoice.total),
-            currency=invoice.currency,
+            amount=posted,
+            currency=currency,
             idempotency_key=idempotency_key,
         )
         attempt.provider_payment_id = result.get("provider_payment_id")
@@ -408,8 +437,14 @@ def refund_invoice(
         raise ValueError("invoice not found")
     if invoice.status != InvoiceStatus.paid:
         raise ValueError("only paid invoices can be refunded")
-    amt = money(amount)
-    if amt <= 0 or amt > money(invoice.total):
+    currency = normalize_currency(invoice.currency)
+    amt = invoice_amount(amount, currency)
+    if Decimal(amount) != amt:
+        raise ValueError(
+            f"refund amount {amount} is not aligned to {currency} minor units ({amt})"
+        )
+    total = invoice_amount(invoice.total, currency)
+    if amt <= 0 or amt > total:
         raise ValueError("refund amount out of range")
     provider = get_provider()
     result = provider.refund(invoice=invoice, amount=amt, reason=reason)

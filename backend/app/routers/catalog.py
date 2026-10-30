@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Customer, Metric, PricingPlan, Subscription, User
+from app.money import normalize_currency
 from app.schemas import (
     CustomerCreate,
     CustomerOut,
@@ -43,7 +44,7 @@ def create_customer(
         organization_id=user.organization_id,
         name=body.name,
         external_ref=body.external_ref,
-        currency=body.currency,
+        currency=normalize_currency(body.currency),
     )
     db.add(row)
     db.commit()
@@ -182,6 +183,14 @@ def create_subscription(
     customer = db.get(Customer, body.customer_id)
     if customer is None or customer.organization_id != user.organization_id:
         raise HTTPException(status_code=404, detail="customer not found")
+    if normalize_currency(customer.currency) != normalize_currency(plan.currency):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"plan currency {plan.currency} does not match "
+                f"customer currency {customer.currency}"
+            ),
+        )
     sub = Subscription(
         organization_id=user.organization_id,
         customer_id=customer.id,

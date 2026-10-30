@@ -4,7 +4,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from app.models import PricingComponent
-from app.money import money
+from app.money import money, usage_qty
 from app.services.pricing import price_quantity
 
 
@@ -21,6 +21,8 @@ def test_flat_price_non_negative_and_linear(qty, unit):
         unit_price=money(unit),
         tiers_json=None,
     )
-    _avg, amount = price_quantity(component, Decimal(qty))
+    rate, amount = price_quantity(component, Decimal(qty))
     assert amount >= 0
-    assert amount == money(money(unit) * Decimal(qty))
+    assert rate == money(unit)
+    # Full-precision extension. Invoice posting rounds this once.
+    assert amount == rate * usage_qty(Decimal(qty))
