@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.money import money
+from app.money import invoice_amount
 
 
 def calculate_tax(*, taxable_subtotal: Decimal, currency: str = "USD") -> Decimal:
@@ -19,10 +19,13 @@ def calculate_tax(*, taxable_subtotal: Decimal, currency: str = "USD") -> Decima
 
     Args:
         taxable_subtotal: Invoice subtotal before tax.
-        currency: ISO currency code (unused in this stub).
+        currency: ISO currency code. Selects the minor-unit grid; tax is still zero.
 
     Returns:
-        Quantized tax amount (always zero in this build).
+        Posted tax amount (always zero in this build), on the currency grid.
+
+    Raises:
+        UnknownCurrencyError: If ``currency`` is not an ISO 4217 code.
     """
-    _ = (taxable_subtotal, currency)
-    return money(0)
+    _ = taxable_subtotal
+    return invoice_amount(0, currency)

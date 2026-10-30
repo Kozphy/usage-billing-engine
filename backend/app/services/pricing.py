@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.money import money, usage_qty
+from app.money import money, normalize_currency, usage_qty
 from app.models import Metric, PricingComponent, PricingPlan, PricingVersion
 from app.schemas import ComponentIn, PlanCreate, PlanVersionCreate
 from app.services import audit
@@ -55,7 +55,7 @@ def create_plan(
         organization_id=organization_id,
         code=body.code,
         name=body.name,
-        currency=body.currency,
+        currency=normalize_currency(body.currency),
         active=True,
     )
     db.add(plan)
@@ -200,14 +200,22 @@ def get_version(db: Session, version_id: str) -> PricingVersion:
 
 
 def price_quantity(component: PricingComponent, quantity: Decimal) -> tuple[Decimal, Decimal]:
-    """Price a usage quantity under a flat or tiered component.
+    """Price a usage quantity at full precision.
+
+    Catalog rates are on the storage grid (``money()``). Band products and the
+    running total are not rounded. Callers round the returned line amount once
+    with ``invoice_amount``. Tier boundaries still snap to the usage quantum;
+    that is quantity grid alignment, not a money round.
 
     Args:
         component: Pricing component definition.
         quantity: Usage quantity to price.
 
     Returns:
-        Tuple of ``(effective_unit_price, line_amount)``.
+        ``(effective_unit_price, exact_line_amount)``. Flat pricing returns the
+        catalog rate. Tiered pricing returns the exact average
+        ``exact_line_amount / quantity``, which is informational and must not
+        be multiplied back to recompute the charge.
 
     Raises:
         ValueError: Unknown model, missing tiers, or quantity beyond tiers.
@@ -215,7 +223,7 @@ def price_quantity(component: PricingComponent, quantity: Decimal) -> tuple[Deci
     qty = usage_qty(quantity)
     if component.model == "flat_per_unit":
         unit = money(component.unit_price)
-        return unit, money(unit * qty)
+        return unit, unit * qty
     if component.model == "tiered":
         if not component.tiers_json:
             raise ValueError("tiered component missing tiers")
@@ -233,13 +241,13 @@ def price_quantity(component: PricingComponent, quantity: Decimal) -> tuple[Deci
                 band = min(remaining, band_cap)
                 previous_up_to = up_to
             if band > 0:
-                total = money(total + money(unit * band))
+                total += unit * band
                 remaining = usage_qty(remaining - band)
             if remaining == 0:
                 break
         if remaining > 0:
             raise ValueError("quantity exceeds defined tiers")
-        # effective average for display
-        avg = money(total / qty) if qty else money(0)
-        return avg, total
+        if qty == 0:
+            return money(0), Decimal("0")
+        return total / qty, total
     raise ValueError(f"unknown pricing model {component.model}")

@@ -21,3 +21,5 @@
 | GET | `/health` | — | Liveness |
 
 Quantity and money fields in JSON should be **strings** (e.g. `"0.0100"`) to avoid float parsing.
+
+`currency` must be an ISO 4217 alphabetic code (`USD`, `JPY`, `KWD`, `TWD`, …). Unknown codes are rejected. Invoice line amounts are rounded once to that currency's minor unit, and the invoice total equals the sum of those lines (tax is zero in this build). The charge API still returns the major-unit amount; the provider payload uses integer minor units.

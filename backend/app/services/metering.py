@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import EventConflictError
 from app.logging_setup import get_logger
-from app.money import usage_qty
+from app.money import invoice_amount, usage_qty
 from app.models import (
     Customer,
     Invoice,
@@ -327,10 +327,11 @@ def _create_late_adjustment(
     from app.services.pricing import get_version, price_quantity
 
     version = get_version(db, invoice.pricing_version_id)
-    amount = Decimal("0")
+    amount = invoice_amount(0, invoice.currency)
     for component in version.components:
         if component.metric_id == usage_event.metric_id:
-            _, amount = price_quantity(component, usage_event.quantity)
+            _, exact = price_quantity(component, usage_event.quantity)
+            amount = invoice_amount(exact, invoice.currency)
             break
     adj = InvoiceAdjustment(
         organization_id=organization_id,

@@ -23,3 +23,11 @@ def test_bankers_rounding():
 def test_sum_and_display():
     assert sum_money([Decimal("0.1000"), Decimal("0.2000")]) == Decimal("0.3000")
     assert display(Decimal("1.2")) == "1.20"
+
+
+def test_sum_money_does_not_quantize_each_step():
+    # Each addend is exactly halfway to 0.0000 on the storage grid (even digit).
+    # Rounding each step would collapse the sum to zero.
+    parts = [Decimal("0.00005"), Decimal("0.00005"), Decimal("0.00005")]
+    assert money(parts[0]) == Decimal("0.0000")
+    assert sum_money(parts) == Decimal("0.00015")

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import CutoverBlockedError, InvoiceImmutableError
-from app.money import money, sum_money
+from app.money import invoice_amount, money, normalize_currency, sum_money
 from app.models import (
     Customer,
     Invoice,
@@ -20,8 +20,10 @@ from app.models import (
     InvoiceLine,
     InvoiceStatus,
     Metric,
+    PricingComponent,
     PricingCutover,
     PricingPlan,
+    PricingVersion,
     ShadowInvoice,
     Subscription,
     utcnow,
@@ -29,6 +31,57 @@ from app.models import (
 from app.services import audit
 from app.services.metering import list_event_ids_for_period, sum_usage
 from app.services.pricing import get_version, price_quantity
+
+
+def _invoice_currency(db: Session, customer: Customer, version: PricingVersion) -> str:
+    """Resolve the invoice currency and reject plan/customer mismatches.
+
+    Prices are interpreted in the customer currency. This service does not
+    convert FX, so a plan priced in another currency fails instead of mixing
+    units.
+
+    Args:
+        db: Active SQLAlchemy session.
+        customer: Customer being invoiced.
+        version: Pricing version whose plan supplies the catalog currency.
+
+    Returns:
+        Normalized ISO 4217 code.
+
+    Raises:
+        UnknownCurrencyError: If either currency code is not in the ISO table.
+        ValueError: If the plan is missing or its currency differs.
+    """
+    currency = normalize_currency(customer.currency)
+    plan = db.get(PricingPlan, version.plan_id)
+    if plan is None:
+        raise ValueError("plan not found")
+    plan_currency = normalize_currency(plan.currency)
+    if plan_currency != currency:
+        raise ValueError(
+            f"plan currency {plan_currency} does not match customer currency {currency}"
+        )
+    return currency
+
+
+def _posted_usage(
+    component: PricingComponent, quantity: Decimal, currency: str
+) -> tuple[Decimal, Decimal]:
+    """Price usage and round the line amount once.
+
+    Args:
+        component: Pricing component passed to ``price_quantity``.
+        quantity: Usage quantity for the line.
+        currency: Invoice currency (ISO 4217).
+
+    Returns:
+        ``(stored_unit_price, posted_amount)``. The unit price is on the
+        storage grid for the column. The posted amount is the exact extension
+        rounded once to the currency minor unit. Tiered unit prices are an
+        informational average and are not a second charge calculation.
+    """
+    unit, exact = price_quantity(component, quantity)
+    return money(unit), invoice_amount(exact, currency)
 
 
 def _next_invoice_number(db: Session, organization_id: str) -> str:
@@ -141,6 +194,7 @@ def generate_invoice(
             raise ValueError("no active subscription for customer")
 
     version = get_version(db, subscription.pricing_version_id)
+    currency = _invoice_currency(db, customer, version)
     if invoice is None:
         invoice = Invoice(
             organization_id=organization_id,
@@ -149,10 +203,10 @@ def generate_invoice(
             pricing_version_id=version.id,
             number=_next_invoice_number(db, organization_id),
             status=InvoiceStatus.draft,
-            currency=customer.currency,
+            currency=currency,
             period_start=period_start,
             period_end=period_end,
-            tax_total=money(0),  # tax extension point — always zero here
+            tax_total=invoice_amount(0, currency),
         )
         db.add(invoice)
         try:
@@ -173,16 +227,18 @@ def generate_invoice(
     else:
         invoice.pricing_version_id = version.id
         invoice.subscription_id = subscription.id
+        invoice.currency = currency
 
     amounts: list[Decimal] = []
-    base = money(version.base_fee)
+    catalog_base = money(version.base_fee)
+    base = invoice_amount(catalog_base, currency)
     if base:
         line = InvoiceLine(
             invoice_id=invoice.id,
             pricing_version_id=version.id,
             description="Base subscription fee",
             quantity=Decimal("1"),
-            unit_price=base,
+            unit_price=catalog_base,
             amount=base,
         )
         db.add(line)
@@ -197,7 +253,7 @@ def generate_invoice(
             period_start=period_start,
             period_end=period_end,
         )
-        unit, amount = price_quantity(component, qty)
+        unit, amount = _posted_usage(component, qty, currency)
         metric = db.get(Metric, component.metric_id)
         event_ids = list_event_ids_for_period(
             db,
@@ -222,8 +278,10 @@ def generate_invoice(
         amounts.append(amount)
 
     invoice.subtotal = sum_money(amounts)
-    invoice.tax_total = money(0)
-    invoice.total = money(invoice.subtotal + invoice.tax_total)
+    invoice.tax_total = invoice_amount(0, currency)
+    # Tax is already on the currency grid (zero in this build). Summing posted
+    # lines plus posted tax keeps total equal to the sum of rounded lines.
+    invoice.total = sum_money([invoice.subtotal, invoice.tax_total])
 
     if finalize:
         invoice.status = InvoiceStatus.open
@@ -288,8 +346,9 @@ def shadow_compare(
     if invoice is None or invoice.organization_id != organization_id:
         raise ValueError("invoice not found")
     alt = get_version(db, alternate_pricing_version_id)
+    currency = normalize_currency(invoice.currency)
     amounts: list[Decimal] = []
-    base = money(alt.base_fee)
+    base = invoice_amount(alt.base_fee, currency)
     if base:
         amounts.append(base)
     for component in alt.components:
@@ -302,17 +361,17 @@ def shadow_compare(
             period_end=invoice.period_end,
         )
         # Late adjustments are excluded from sum_usage; shadow uses same frozen usage set.
-        _, amount = price_quantity(component, qty)
+        _, amount = _posted_usage(component, qty, currency)
         amounts.append(amount)
     total = sum_money(amounts)
-    delta = money(total - money(invoice.total))
-    tolerance = money(get_settings().shadow_expected_tolerance)
+    delta = total - invoice_amount(invoice.total, currency)
+    tolerance = invoice_amount(get_settings().shadow_expected_tolerance, currency)
 
     if abs(delta) <= tolerance:
         classification = "match"
         cutover_allowed = True
         notes = "totals match within tolerance"
-    elif expected_delta is not None and money(expected_delta) == delta:
+    elif expected_delta is not None and invoice_amount(expected_delta, currency) == delta:
         classification = "expected_delta"
         cutover_allowed = True
         notes = f"delta matches declared expected_delta={expected_delta}"

@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.money import normalize_currency
+
 
 class MoneyStr(BaseModel):
     """Base model enabling ORM attribute reading for money-related responses."""
@@ -26,10 +28,33 @@ class TokenResponse(BaseModel):
     user_id: str
 
 
+def _validate_currency(value: Any) -> str:
+    """Reject unknown ISO 4217 codes before they reach the ledger.
+
+    Args:
+        value: Raw currency field.
+
+    Returns:
+        Canonical uppercase code.
+
+    Raises:
+        ValueError: If ``value`` is not a string.
+        UnknownCurrencyError: If the code is not in the minor-unit table.
+    """
+    if not isinstance(value, str):
+        raise ValueError("currency must be an ISO 4217 alphabetic code")
+    return normalize_currency(value)
+
+
 class CustomerCreate(BaseModel):
     name: str
     external_ref: str
     currency: str = "USD"
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def known_currency(cls, value: Any) -> str:
+        return _validate_currency(value)
 
 
 class CustomerOut(BaseModel):
@@ -89,6 +114,11 @@ class PlanCreate(BaseModel):
     base_fee: Decimal = Decimal("0")
     components: list[ComponentIn]
     effective_from: datetime | None = None
+
+    @field_validator("currency", mode="before")
+    @classmethod
+    def known_currency(cls, value: Any) -> str:
+        return _validate_currency(value)
 
     @field_validator("base_fee", mode="before")
     @classmethod
