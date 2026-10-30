@@ -14,6 +14,20 @@ ZERO = Decimal("0")
 
 
 def money(value: Decimal | int | str) -> Decimal:
+    """Quantize an accounting amount to the control-plane money quantum.
+
+    Args:
+        value: Amount as ``Decimal``, ``int``, or numeric ``str``. Floats are
+            not accepted.
+
+    Returns:
+        ``Decimal`` quantized to ``MONEY_QUANTUM`` (0.0001) with
+        ``ROUND_HALF_EVEN``.
+
+    Raises:
+        TypeError: If ``value`` is a ``float``.
+        ValueError: If ``value`` cannot be converted to ``Decimal``.
+    """
     if isinstance(value, float):
         raise TypeError("float is not allowed for accounting amounts; use Decimal or str")
     try:
@@ -23,6 +37,19 @@ def money(value: Decimal | int | str) -> Decimal:
 
 
 def usage_qty(value: Decimal | int | str) -> Decimal:
+    """Quantize a non-negative usage quantity.
+
+    Args:
+        value: Quantity as ``Decimal``, ``int``, or numeric ``str``. Floats are
+            not accepted.
+
+    Returns:
+        ``Decimal`` quantized to ``USAGE_QUANTUM`` (0.000001).
+
+    Raises:
+        TypeError: If ``value`` is a ``float``.
+        ValueError: If ``value`` is invalid or negative.
+    """
     if isinstance(value, float):
         raise TypeError("float is not allowed for usage quantities; use Decimal or str")
     try:
@@ -35,14 +62,38 @@ def usage_qty(value: Decimal | int | str) -> Decimal:
 
 
 def display(value: Decimal) -> str:
+    """Format a ledger amount for two-decimal human display.
+
+    Args:
+        value: Quantized control-plane ``Decimal`` amount.
+
+    Returns:
+        String rounded to ``DISPLAY_QUANTUM`` (0.01) with banker's rounding.
+    """
     return str(money(value).quantize(DISPLAY_QUANTUM, rounding=ROUND_HALF_EVEN))
 
 
 def is_zero(value: Decimal | int | str) -> bool:
+    """Return whether ``money(value)`` equals ledger zero.
+
+    Args:
+        value: Amount to test (``Decimal``, ``int``, or numeric ``str``).
+
+    Returns:
+        ``True`` if the quantized amount equals ``ZERO``.
+    """
     return money(value) == ZERO
 
 
 def sum_money(values: list[Decimal]) -> Decimal:
+    """Sum accounting amounts with intermediate quantization.
+
+    Args:
+        values: List of money-compatible amounts.
+
+    Returns:
+        Quantized sum of all values.
+    """
     total = ZERO
     for value in values:
         total = money(total + money(value))

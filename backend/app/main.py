@@ -1,3 +1,5 @@
+"""FastAPI application factory for the usage billing engine."""
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,6 +14,14 @@ from app.routers import auth, billing, catalog, usage
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """Configure logging and ensure ORM tables exist on startup.
+
+    Args:
+        _app: FastAPI application instance (unused).
+
+    Yields:
+        Control back to the running application.
+    """
     settings = get_settings()
     configure_logging(settings.log_level)
     Base.metadata.create_all(bind=engine)
@@ -19,6 +29,11 @@ async def lifespan(_app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """Build and configure the FastAPI application.
+
+    Returns:
+        Configured ``FastAPI`` app with routers and middleware.
+    """
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.add_middleware(CorrelationIdMiddleware)
@@ -36,6 +51,11 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
+        """Return liveness and basic configuration signals.
+
+        Returns:
+            Health payload including environment and payment provider mode.
+        """
         return {
             "status": "ok",
             "environment": settings.environment,

@@ -1,3 +1,5 @@
+"""Invoice generation, immutability, shadow compare, and pricing cutover."""
+
 from __future__ import annotations
 
 import json
@@ -30,6 +32,15 @@ from app.services.pricing import get_version, price_quantity
 
 
 def _next_invoice_number(db: Session, organization_id: str) -> str:
+    """Allocate the next human-readable invoice number for an organization.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+
+    Returns:
+        Invoice number string such as ``INV-000001``.
+    """
     count = db.scalar(
         select(func.count()).select_from(Invoice).where(Invoice.organization_id == organization_id)
     )
@@ -37,6 +48,14 @@ def _next_invoice_number(db: Session, organization_id: str) -> str:
 
 
 def _is_immutable(invoice: Invoice) -> bool:
+    """Return whether invoice line totals must not be rewritten.
+
+    Args:
+        invoice: Invoice to inspect.
+
+    Returns:
+        ``True`` when finalized or in a terminal accounting status.
+    """
     if invoice.finalized_at is not None:
         return True
     return invoice.status in {
@@ -59,7 +78,26 @@ def generate_invoice(
     finalize: bool = True,
     actor_user_id: str | None = None,
 ) -> Invoice:
-    """Idempotent for (org, customer, period). Finalized invoices are never rewritten."""
+    """Generate or return an idempotent invoice for a customer period.
+
+    Finalized invoices are never rewritten. Draft invoices may be recalculated.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        customer_id: Customer primary key.
+        period_start: Inclusive UTC period start.
+        period_end: Inclusive UTC period end.
+        subscription_id: Optional subscription override.
+        finalize: When True, mark the invoice open/finalized.
+        actor_user_id: Optional authenticated user id for audit.
+
+    Returns:
+        ``Invoice`` with lines and totals.
+
+    Raises:
+        ValueError: Missing customer/subscription or invalid period.
+    """
     if period_end < period_start:
         raise ValueError("period_end must be >= period_start")
 
@@ -209,6 +247,14 @@ def generate_invoice(
 
 
 def assert_mutable(invoice: Invoice) -> None:
+    """Raise if the invoice is immutable.
+
+    Args:
+        invoice: Invoice to check.
+
+    Raises:
+        InvoiceImmutableError: When the invoice is finalized.
+    """
     if _is_immutable(invoice):
         raise InvoiceImmutableError(invoice.id)
 
@@ -222,6 +268,22 @@ def shadow_compare(
     expected_delta: Decimal | None = None,
     actor_user_id: str | None = None,
 ) -> ShadowInvoice:
+    """Compare an invoice against an alternate pricing version on frozen usage.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        invoice_id: Source invoice id.
+        alternate_pricing_version_id: Candidate pricing version.
+        expected_delta: Optional declared delta that classifies as expected.
+        actor_user_id: Optional authenticated user id for audit.
+
+    Returns:
+        ``ShadowInvoice`` with classification and cutover flag.
+
+    Raises:
+        ValueError: If the invoice is missing.
+    """
     invoice = db.get(Invoice, invoice_id)
     if invoice is None or invoice.organization_id != organization_id:
         raise ValueError("invoice not found")
@@ -301,9 +363,24 @@ def execute_cutover(
     invoice_ids: list[str],
     actor_user_id: str | None = None,
 ) -> PricingCutover:
-    """Point new subscriptions at to_version only if all listed shadows allow cutover.
+    """Cut over active subscriptions when shadow comparisons allow it.
 
     Does not mutate finalized invoices or re-issue payments.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        plan_code: Plan code to cut over.
+        to_pricing_version_id: Target pricing version id.
+        invoice_ids: Invoices whose shadows must allow cutover.
+        actor_user_id: Optional authenticated user id for audit.
+
+    Returns:
+        ``PricingCutover`` audit row with action ``cutover``.
+
+    Raises:
+        CutoverBlockedError: When any listed shadow forbids cutover.
+        ValueError: Invalid plan/version pairing.
     """
     plan = db.scalar(
         select(PricingPlan).where(
@@ -407,6 +484,20 @@ def rollback_cutover(
     cutover_id: str,
     actor_user_id: str | None = None,
 ) -> PricingCutover:
+    """Roll back a successful cutover by restoring prior subscription versions.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        cutover_id: Prior cutover row id.
+        actor_user_id: Optional authenticated user id for audit.
+
+    Returns:
+        New ``PricingCutover`` row with action ``rollback``.
+
+    Raises:
+        ValueError: If the cutover is missing or not rollback-eligible.
+    """
     prior = db.get(PricingCutover, cutover_id)
     if prior is None or prior.organization_id != organization_id:
         raise ValueError("cutover not found")
@@ -446,6 +537,15 @@ def rollback_cutover(
 
 
 def list_adjustments(db: Session, invoice_id: str) -> list[InvoiceAdjustment]:
+    """List late-usage adjustments for an invoice.
+
+    Args:
+        db: Active SQLAlchemy session.
+        invoice_id: Invoice primary key.
+
+    Returns:
+        List of ``InvoiceAdjustment`` rows.
+    """
     return list(
         db.scalars(select(InvoiceAdjustment).where(InvoiceAdjustment.invoice_id == invoice_id)).all()
     )

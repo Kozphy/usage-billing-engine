@@ -16,6 +16,13 @@ def calculate_tax(*, taxable_subtotal: Decimal, currency: str = "USD") -> Decima
     """Return tax amount for a subtotal.
 
     Currently always ``0`` (extension point only).
+
+    Args:
+        taxable_subtotal: Invoice subtotal before tax.
+        currency: ISO currency code (unused in this stub).
+
+    Returns:
+        Quantized tax amount (always zero in this build).
     """
     _ = (taxable_subtotal, currency)
     return money(0)

@@ -13,7 +13,17 @@ correlation_id_var: ContextVar[str | None] = ContextVar("correlation_id", defaul
 
 
 class JsonFormatter(logging.Formatter):
+    """Format log records as single-line JSON objects."""
+
     def format(self, record: logging.LogRecord) -> str:
+        """Serialize a log record to JSON.
+
+        Args:
+            record: Standard library log record.
+
+        Returns:
+            JSON string including optional correlation and billing fields.
+        """
         payload: dict[str, Any] = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
@@ -40,6 +50,11 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str = "INFO") -> None:
+    """Configure the root logger for stdout JSON logging.
+
+    Args:
+        level: Logging level name (for example ``INFO`` or ``DEBUG``).
+    """
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
@@ -49,4 +64,12 @@ def configure_logging(level: str = "INFO") -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
+    """Return a named logger.
+
+    Args:
+        name: Logger name, typically ``__name__``.
+
+    Returns:
+        Standard library ``Logger`` instance.
+    """
     return logging.getLogger(name)

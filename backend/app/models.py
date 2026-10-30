@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM models for metering, pricing, invoices, and payments."""
+
 from __future__ import annotations
 
 import enum
@@ -24,15 +26,26 @@ from app.db import Base
 
 
 def utcnow() -> datetime:
+    """Return the current UTC timestamp.
+
+    Returns:
+        Timezone-aware ``datetime`` in UTC.
+    """
     return datetime.now(timezone.utc)
 
 
 def new_id() -> str:
+    """Generate a new UUID4 string primary key.
+
+    Returns:
+        UUID string.
+    """
     return str(uuid.uuid4())
 
 
-
 class InvoiceStatus(str, enum.Enum):
+    """Lifecycle states for customer invoices."""
+
     draft = "draft"
     open = "open"
     paid = "paid"
@@ -42,6 +55,8 @@ class InvoiceStatus(str, enum.Enum):
 
 
 class OutboxStatus(str, enum.Enum):
+    """Lifecycle states for transactional outbox messages."""
+
     pending = "pending"
     processing = "processing"
     done = "done"
@@ -49,6 +64,8 @@ class OutboxStatus(str, enum.Enum):
 
 
 class Organization(Base):
+    """Tenant organization that owns customers, usage, and invoices."""
+
     __tablename__ = "organizations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -60,6 +77,8 @@ class Organization(Base):
 
 
 class User(Base):
+    """Authenticated user belonging to a single organization."""
+
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("organization_id", "email", name="uq_user_org_email"),)
 
@@ -73,6 +92,8 @@ class User(Base):
 
 
 class Customer(Base):
+    """Billable customer identified by an org-scoped external reference."""
+
     __tablename__ = "customers"
     __table_args__ = (UniqueConstraint("organization_id", "external_ref", name="uq_customer_ext"),)
 
@@ -162,6 +183,8 @@ class Subscription(Base):
 
 
 class UsageEvent(Base):
+    """Durable usage event with content hash and server ``received_at``."""
+
     __tablename__ = "usage_events"
     __table_args__ = (
         UniqueConstraint("organization_id", "event_id", name="uq_usage_event_id"),
@@ -211,6 +234,8 @@ class UsageAggregate(Base):
 
 
 class Invoice(Base):
+    """Customer invoice for a billing period; immutable after finalization."""
+
     __tablename__ = "invoices"
     __table_args__ = (
         UniqueConstraint("organization_id", "number", name="uq_invoice_number"),
@@ -267,7 +292,7 @@ class InvoiceLine(Base):
 
 
 class InvoiceAdjustment(Base):
-    """Late usage after finalization — never mutates the finalized invoice totals."""
+    """Late usage after finalization; never mutates finalized invoice totals."""
 
     __tablename__ = "invoice_adjustments"
     __table_args__ = (

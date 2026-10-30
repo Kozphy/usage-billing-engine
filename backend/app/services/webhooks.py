@@ -1,3 +1,5 @@
+"""Provider webhook ingest with signature checks and event dedupe."""
+
 from __future__ import annotations
 
 import json
@@ -23,6 +25,25 @@ def ingest_webhook(
     signature_header: str | None = None,
     webhook_secret: str | None = None,
 ) -> tuple[WebhookEvent, bool]:
+    """Persist and process a provider webhook event idempotently.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id from query/routing context.
+        provider: Provider name (``mock`` or ``stripe``).
+        provider_event_id: Provider-unique event id used for dedupe.
+        event_type: Provider event type string.
+        payload: Parsed JSON body.
+        raw_body: Raw body bytes required for Stripe signature verification.
+        signature_header: Optional ``Stripe-Signature`` header.
+        webhook_secret: Optional webhook signing secret.
+
+    Returns:
+        Tuple of ``(WebhookEvent, duplicate)``.
+
+    Raises:
+        PermissionError: Missing/invalid Stripe signature.
+    """
     if provider == "stripe":
         if not signature_header or not webhook_secret or raw_body is None:
             raise PermissionError("stripe webhook signature required")

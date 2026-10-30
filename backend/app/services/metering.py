@@ -1,3 +1,5 @@
+"""Usage metering: durable ingest, content-hash conflicts, late-event policy."""
+
 from __future__ import annotations
 
 import hashlib
@@ -39,6 +41,14 @@ log = get_logger(__name__)
 
 
 def _month_bounds(d: date) -> tuple[date, date]:
+    """Return inclusive calendar-month bounds containing ``d``.
+
+    Args:
+        d: Any date inside the target month.
+
+    Returns:
+        Tuple of ``(period_start, period_end)`` where both ends are inclusive.
+    """
     start = d.replace(day=1)
     if start.month == 12:
         end = date(start.year + 1, 1, 1)
@@ -55,12 +65,37 @@ def content_hash(
     occurred_at: datetime,
     schema_version: int,
 ) -> str:
+    """Compute a stable hash of billable event fields.
+
+    Args:
+        customer_id: Internal customer primary key.
+        metric_id: Internal metric primary key.
+        quantity: Quantized usage quantity.
+        occurred_at: Timezone-aware event time.
+        schema_version: Client schema version integer.
+
+    Returns:
+        Hex SHA-256 digest used for conflict detection.
+    """
     occurred = occurred_at.astimezone(timezone.utc).isoformat()
     raw = f"{customer_id}|{metric_id}|{quantity}|{occurred}|{schema_version}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def resolve_customer(db: Session, organization_id: str, external_ref: str) -> Customer:
+    """Resolve a customer by org-scoped external reference.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        external_ref: Client-facing customer reference.
+
+    Returns:
+        Matching ``Customer`` row.
+
+    Raises:
+        ValueError: If no customer matches.
+    """
     customer = db.scalar(
         select(Customer).where(
             Customer.organization_id == organization_id,
@@ -73,6 +108,19 @@ def resolve_customer(db: Session, organization_id: str, external_ref: str) -> Cu
 
 
 def resolve_metric(db: Session, organization_id: str, code: str) -> Metric:
+    """Resolve a metric by org-scoped code.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        code: Metric code (for example ``tts_chars``).
+
+    Returns:
+        Matching ``Metric`` row.
+
+    Raises:
+        ValueError: If no metric matches.
+    """
     metric = db.scalar(
         select(Metric).where(Metric.organization_id == organization_id, Metric.code == code)
     )
@@ -88,6 +136,17 @@ def _find_covering_invoice(
     customer_id: str,
     occurred: date,
 ) -> Invoice | None:
+    """Find a finalized/open invoice whose period covers ``occurred``.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        customer_id: Customer primary key.
+        occurred: UTC calendar date of the usage event.
+
+    Returns:
+        Covering ``Invoice`` or ``None`` when the period is still open for billing.
+    """
     rows = db.scalars(
         select(Invoice).where(
             Invoice.organization_id == organization_id,
@@ -400,6 +459,19 @@ def list_event_ids_for_period(
     period_start: date,
     period_end: date,
 ) -> list[str]:
+    """List usage event ids contributing to a period for invoice traceability.
+
+    Args:
+        db: Active SQLAlchemy session.
+        organization_id: Tenant id.
+        customer_id: Customer primary key.
+        metric_id: Metric primary key.
+        period_start: Inclusive period start date.
+        period_end: Inclusive period end date.
+
+    Returns:
+        List of usage event primary keys.
+    """
     rows = db.scalars(
         select(UsageEvent).where(
             UsageEvent.organization_id == organization_id,
