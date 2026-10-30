@@ -1,0 +1,28 @@
+backend/app/errors.py
+  h_1d8a7f1e671f32 7,11
+backend/app/services/replay.py
+  h_1d8a7f1e671f32 25
+backend/app/services/pricing.py
+  h_1d8a7f1e671f32 144
+backend/app/db.py
+  h_1d8a7f1e671f32 10
+backend/app/services/invoicing.py
+  h_1d8a7f1e671f32 62,304
+backend/app/models.py
+  h_1d8a7f1e671f32 35,270
+backend/app/services/payments.py
+  h_1d8a7f1e671f32 34,42,321,339
+backend/app/services/outbox.py
+  h_1d8a7f1e671f32 41,65,111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "614e51f79bc68b8c4524615ab72bd22052a5671f",
+  "prompts": {},
+  "humans": {
+    "h_1d8a7f1e671f32": {
+      "author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
