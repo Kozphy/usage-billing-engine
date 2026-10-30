@@ -1,5 +1,3 @@
-"""Payment provider adapters and idempotent charge/refund orchestration."""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,8 +22,6 @@ log = get_logger(__name__)
 
 
 class PaymentProvider(Protocol):
-    """Protocol for charge/refund adapters (mock or Stripe)."""
-
     name: str
 
     def charge(
@@ -35,19 +31,7 @@ class PaymentProvider(Protocol):
         amount: Decimal,
         currency: str,
         idempotency_key: str,
-    ) -> dict:
-        """Charge an invoice amount.
-
-        Args:
-            invoice: Invoice being charged.
-            amount: Quantized charge amount.
-            currency: ISO currency code.
-            idempotency_key: Provider idempotency key.
-
-        Returns:
-            Provider result dict with ``status`` and ``provider_payment_id``.
-        """
-        ...
+    ) -> dict: ...
 
     def refund(
         self,
@@ -55,18 +39,7 @@ class PaymentProvider(Protocol):
         invoice: Invoice,
         amount: Decimal,
         reason: str,
-    ) -> dict:
-        """Refund a previously charged invoice.
-
-        Args:
-            invoice: Paid invoice.
-            amount: Quantized refund amount.
-            reason: Human-readable refund reason.
-
-        Returns:
-            Provider result dict with ``provider_refund_id``.
-        """
-        ...
+    ) -> dict: ...
 
 
 class MockPaymentProvider:
@@ -82,20 +55,6 @@ class MockPaymentProvider:
         currency: str,
         idempotency_key: str,
     ) -> dict:
-        """Return a deterministic successful fake charge.
-
-        Args:
-            invoice: Invoice being charged.
-            amount: Quantized charge amount.
-            currency: ISO currency code.
-            idempotency_key: Used to build a stable fake payment id.
-
-        Returns:
-            Fake provider result with ``mode=fake``.
-
-        Raises:
-            TimeoutError: When ``mock_payment_timeout_rate`` triggers.
-        """
         settings = get_settings()
         if settings.mock_payment_timeout_rate > 0 and random.random() < settings.mock_payment_timeout_rate:
             raise TimeoutError("simulated mock provider timeout")
@@ -108,16 +67,6 @@ class MockPaymentProvider:
         }
 
     def refund(self, *, invoice: Invoice, amount: Decimal, reason: str) -> dict:
-        """Return a deterministic successful fake refund.
-
-        Args:
-            invoice: Paid invoice.
-            amount: Quantized refund amount.
-            reason: Human-readable refund reason.
-
-        Returns:
-            Fake provider refund result with ``mode=fake``.
-        """
         return {
             "provider_refund_id": f"mock_ref_{invoice.id[:8]}",
             "status": "succeeded",
@@ -145,21 +94,6 @@ class StripeAdapter:
         currency: str,
         idempotency_key: str,
     ) -> dict:
-        """Create and confirm a Stripe test-mode PaymentIntent.
-
-        Args:
-            invoice: Invoice being charged.
-            amount: Quantized charge amount (converted to cents for USD).
-            currency: ISO currency code.
-            idempotency_key: Stripe ``Idempotency-Key`` header value.
-
-        Returns:
-            Provider result including Stripe payment intent id.
-
-        Raises:
-            RuntimeError: Missing secret key or Stripe API error.
-            TimeoutError: Provider request timed out.
-        """
         settings = get_settings()
         if not settings.stripe_secret_key:
             raise RuntimeError(
@@ -203,19 +137,6 @@ class StripeAdapter:
         }
 
     def refund(self, *, invoice: Invoice, amount: Decimal, reason: str) -> dict:
-        """Create a Stripe refund against the invoice payment intent.
-
-        Args:
-            invoice: Paid invoice with ``provider_invoice_id`` when available.
-            amount: Quantized refund amount.
-            reason: Human-readable refund reason.
-
-        Returns:
-            Provider refund result with ``mode=stripe_test``.
-
-        Raises:
-            RuntimeError: Missing secret key or Stripe API error.
-        """
         settings = get_settings()
         if not settings.stripe_secret_key:
             raise RuntimeError("STRIPE_SECRET_KEY not configured")
@@ -245,11 +166,6 @@ class StripeAdapter:
 
 
 def get_provider() -> PaymentProvider:
-    """Return the configured payment provider adapter.
-
-    Returns:
-        ``StripeAdapter`` when ``PAYMENT_PROVIDER=stripe``, otherwise mock.
-    """
     settings = get_settings()
     if settings.payment_provider == "stripe":
         return StripeAdapter()
@@ -264,23 +180,6 @@ def charge_invoice(
     idempotency_key: str,
     actor_user_id: str | None = None,
 ) -> PaymentAttempt:
-    """Charge an open invoice idempotently.
-
-    Payment status is stored separately from invoice calculation totals.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        invoice_id: Invoice to charge.
-        idempotency_key: Unique key preventing duplicate provider requests.
-        actor_user_id: Optional authenticated user id for audit.
-
-    Returns:
-        ``PaymentAttempt`` row (existing row returned on idempotent retry).
-
-    Raises:
-        ValueError: Invoice missing, not chargeable, or already paid without attempt.
-    """
     invoice = db.get(Invoice, invoice_id)
     if invoice is None or invoice.organization_id != organization_id:
         raise ValueError("invoice not found")
@@ -387,22 +286,6 @@ def refund_invoice(
     reason: str = "",
     actor_user_id: str | None = None,
 ) -> Refund:
-    """Refund part or all of a paid invoice.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        invoice_id: Paid invoice id.
-        amount: Refund amount (must be > 0 and <= invoice total).
-        reason: Human-readable refund reason.
-        actor_user_id: Optional authenticated user id for audit.
-
-    Returns:
-        Persisted ``Refund`` row.
-
-    Raises:
-        ValueError: Invoice not paid or amount out of range.
-    """
     invoice = db.get(Invoice, invoice_id)
     if invoice is None or invoice.organization_id != organization_id:
         raise ValueError("invoice not found")
@@ -435,16 +318,7 @@ def refund_invoice(
 
 
 def verify_stripe_signature(payload: bytes, signature_header: str, secret: str) -> bool:
-    """Verify a Stripe-like webhook signature header (``t=...,v1=...``).
-
-    Args:
-        payload: Raw request body bytes.
-        signature_header: ``Stripe-Signature`` header value.
-        secret: Webhook signing secret.
-
-    Returns:
-        ``True`` when the HMAC matches.
-    """
+    """Minimal Stripe-like HMAC verification for demo webhooks (t=...,v1=...)."""
     parts = dict(item.split("=", 1) for item in signature_header.split(",") if item.count("=") == 1)
     timestamp = parts.get("t")
     signature = parts.get("v1")
@@ -462,19 +336,7 @@ def mark_paid_from_webhook(
     provider_payment_id: str,
     payload: dict,
 ) -> Invoice | None:
-    """Apply an idempotent paid status update from a provider webhook.
-
-    Out-of-order deliveries are safe: already-paid invoices are no-ops.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        provider_payment_id: Provider payment identifier.
-        payload: Parsed webhook JSON (may include ``invoice_id`` fallback).
-
-    Returns:
-        Updated ``Invoice`` or ``None`` when no matching invoice is found.
-    """
+    """Idempotent payment status update. Out-of-order: paid wins; duplicates no-op."""
     attempt = db.scalar(
         select(PaymentAttempt).where(
             PaymentAttempt.organization_id == organization_id,

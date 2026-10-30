@@ -1,5 +1,3 @@
-"""Outbox replay and aggregate rebuild operational helpers."""
-
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -10,15 +8,6 @@ from app.services.outbox import process_pending
 
 
 def requeue_failed_outbox(db: Session, organization_id: str) -> int:
-    """Move terminal failed outbox rows back to pending and process them.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant whose failed messages should be replayed.
-
-    Returns:
-        Number of messages successfully processed after requeue.
-    """
     rows = db.scalars(
         select(OutboxMessage).where(
             OutboxMessage.organization_id == organization_id,
@@ -33,15 +22,7 @@ def requeue_failed_outbox(db: Session, organization_id: str) -> int:
 
 
 def rebuild_aggregates_note(db: Session, organization_id: str) -> dict:
-    """Report how many applied events exist for a full rebuild (ops hint).
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant to inspect.
-
-    Returns:
-        Dict with ``applied_events`` count and an operational ``hint``.
-    """
+    """Report how many applied events exist for a full rebuild (ops hint)."""
     count = len(
         db.scalars(
             select(UsageEvent).where(

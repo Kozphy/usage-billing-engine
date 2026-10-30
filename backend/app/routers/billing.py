@@ -1,5 +1,3 @@
-"""Billing routes: invoices, payments, webhooks, shadow cutover, and ops."""
-
 import json
 from typing import Annotated
 
@@ -30,14 +28,6 @@ router = APIRouter(tags=["billing"])
 
 
 def _invoice_out(invoice: Invoice) -> InvoiceOut:
-    """Map an invoice ORM graph to the API response schema.
-
-    Args:
-        invoice: Invoice with lines/adjustments loaded or lazy-loadable.
-
-    Returns:
-        ``InvoiceOut`` response model.
-    """
     adjustments = [
         InvoiceAdjustmentOut(
             id=adj.id,
@@ -86,16 +76,6 @@ def generate_invoice(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> InvoiceOut:
-    """Generate an idempotent invoice for a customer period.
-
-    Args:
-        body: Period and customer selection.
-        db: Database session.
-        user: Authenticated tenant user.
-
-    Returns:
-        Generated or existing invoice snapshot.
-    """
     try:
         invoice = invoicing.generate_invoice(
             db,
@@ -144,17 +124,6 @@ def charge(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    """Charge an open invoice using an idempotency key.
-
-    Args:
-        invoice_id: Invoice to charge.
-        body: Charge request with ``idempotency_key``.
-        db: Database session.
-        user: Authenticated tenant user.
-
-    Returns:
-        Payment attempt status payload.
-    """
     try:
         attempt = payments.charge_invoice(
             db,

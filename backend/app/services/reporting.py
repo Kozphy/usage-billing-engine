@@ -1,5 +1,3 @@
-"""Lightweight billing summary reports for demos and health checks."""
-
 from __future__ import annotations
 
 from decimal import Decimal
@@ -13,15 +11,6 @@ from app.schemas import ReportSummaryOut
 
 
 def summary(db: Session, organization_id: str) -> ReportSummaryOut:
-    """Compute org-scoped counts and revenue totals.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant to summarize.
-
-    Returns:
-        ``ReportSummaryOut`` with customer/usage counts and open/paid revenue.
-    """
     customers = db.scalar(
         select(func.count()).select_from(Customer).where(Customer.organization_id == organization_id)
     ) or 0

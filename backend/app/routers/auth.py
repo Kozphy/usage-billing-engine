@@ -1,5 +1,3 @@
-"""Authentication routes: register organization/user and login."""
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,18 +16,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=TokenResponse)
 def register(body: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> TokenResponse:
-    """Register a new organization and primary user, returning a JWT.
-
-    Args:
-        body: Registration payload with org name, email, and password.
-        db: Database session.
-
-    Returns:
-        Access token plus organization/user ids.
-
-    Raises:
-        HTTPException: If the email is already registered.
-    """
     existing = db.scalar(select(User).where(User.email == body.email))
     if existing:
         raise HTTPException(status_code=400, detail="email already registered")
@@ -64,18 +50,6 @@ def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)],
 ) -> TokenResponse:
-    """Authenticate with email/password and return a JWT.
-
-    Args:
-        form: OAuth2 password form (username = email).
-        db: Database session.
-
-    Returns:
-        Access token plus organization/user ids.
-
-    Raises:
-        HTTPException: If credentials are invalid.
-    """
     user = db.scalar(select(User).where(User.email == form.username))
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")

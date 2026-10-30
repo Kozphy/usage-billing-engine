@@ -1,5 +1,3 @@
-"""Pydantic request/response schemas for the billing API."""
-
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -8,8 +6,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class MoneyStr(BaseModel):
-    """Base model enabling ORM attribute reading for money-related responses."""
-
     model_config = ConfigDict(from_attributes=True)
 
 

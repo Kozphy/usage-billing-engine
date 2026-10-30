@@ -1,5 +1,3 @@
-"""Authentication helpers: password hashing, JWT access tokens, current user."""
-
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -19,40 +17,14 @@ ALGORITHM = "HS256"
 
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password with bcrypt.
-
-    Args:
-        password: Raw password string.
-
-    Returns:
-        Bcrypt hash suitable for storage.
-    """
     return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a plaintext password against a stored hash.
-
-    Args:
-        plain: Candidate plaintext password.
-        hashed: Stored bcrypt hash.
-
-    Returns:
-        ``True`` if the password matches.
-    """
     return pwd_context.verify(plain, hashed)
 
 
 def create_access_token(subject: str, organization_id: str) -> str:
-    """Create a signed JWT access token for a user within an organization.
-
-    Args:
-        subject: User id placed in the ``sub`` claim.
-        organization_id: Tenant id placed in the ``org`` claim.
-
-    Returns:
-        Encoded JWT string.
-    """
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": subject, "org": organization_id, "exp": expire}
@@ -63,18 +35,6 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
-    """Resolve the authenticated user from a Bearer JWT.
-
-    Args:
-        token: OAuth2 bearer access token.
-        db: Database session.
-
-    Returns:
-        Loaded ``User`` row.
-
-    Raises:
-        HTTPException: If the token is invalid or the user no longer exists.
-    """
     settings = get_settings()
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

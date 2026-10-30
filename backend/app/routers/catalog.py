@@ -1,5 +1,3 @@
-"""Catalog routes: customers, metrics, plans, and subscriptions."""
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,16 +27,6 @@ def create_customer(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> Customer:
-    """Create a customer under the authenticated organization.
-
-    Args:
-        body: Customer create payload.
-        db: Database session.
-        user: Authenticated tenant user.
-
-    Returns:
-        Created ``Customer``.
-    """
     row = Customer(
         organization_id=user.organization_id,
         name=body.name,

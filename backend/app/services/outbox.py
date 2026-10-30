@@ -1,5 +1,3 @@
-"""Transactional outbox enqueue, claim, process, and crash recovery."""
-
 from __future__ import annotations
 
 import json
@@ -24,18 +22,6 @@ def enqueue(
     payload: dict[str, Any],
     correlation_id: str | None = None,
 ) -> OutboxMessage:
-    """Enqueue a transactional outbox message.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        topic: Handler topic (for example ``usage.ingested``).
-        payload: JSON-serializable message body.
-        correlation_id: Optional correlation id for logs/traceability.
-
-    Returns:
-        Newly flushed ``OutboxMessage``.
-    """
     settings = get_settings()
     msg = OutboxMessage(
         organization_id=organization_id,
@@ -52,18 +38,7 @@ def enqueue(
 
 
 def _claim_pending(db: Session, *, limit: int, worker_id: str) -> list[OutboxMessage]:
-    """Claim pending outbox rows for a worker.
-
-    Postgres uses ``FOR UPDATE SKIP LOCKED``; SQLite uses a plain select.
-
-    Args:
-        db: Active SQLAlchemy session.
-        limit: Maximum rows to claim.
-        worker_id: Claim identity written to ``locked_by``.
-
-    Returns:
-        Rows transitioned to ``processing``.
-    """
+    """Claim pending rows. Postgres uses SKIP LOCKED; SQLite uses plain select."""
     settings = get_settings()
     now = utcnow()
     stmt = (
@@ -87,18 +62,7 @@ def _claim_pending(db: Session, *, limit: int, worker_id: str) -> list[OutboxMes
 
 
 def process_pending(db: Session, limit: int = 100, worker_id: str | None = None) -> int:
-    """Drain claimed outbox rows with bounded retries.
-
-    Safe under concurrent workers via ``SKIP LOCKED`` on Postgres.
-
-    Args:
-        db: Active SQLAlchemy session.
-        limit: Maximum rows to process in this pass.
-        worker_id: Optional claim identity override.
-
-    Returns:
-        Count of messages marked ``done``.
-    """
+    """Drain claimed outbox rows. Safe under concurrent workers (SKIP LOCKED on Postgres)."""
     from app.services.metering import apply_aggregate_from_event
 
     settings = get_settings()
@@ -144,15 +108,7 @@ def process_pending(db: Session, limit: int = 100, worker_id: str | None = None)
 
 
 def recover_stale_processing(db: Session, older_than_seconds: int = 60) -> int:
-    """Return stuck ``processing`` rows to ``pending`` after worker crash.
-
-    Args:
-        db: Active SQLAlchemy session.
-        older_than_seconds: Age threshold; ``0`` forces reclaim of all processing.
-
-    Returns:
-        Number of reclaimed rows.
-    """
+    """Worker crash recovery: return processing rows to pending."""
     cutoff = utcnow() - timedelta(seconds=older_than_seconds)
     rows = db.scalars(
         select(OutboxMessage).where(OutboxMessage.status == OutboxStatus.processing)
@@ -170,10 +126,5 @@ def recover_stale_processing(db: Session, older_than_seconds: int = 60) -> int:
 
 
 def maybe_process_sync(db: Session) -> None:
-    """Process pending outbox inline when ``OUTBOX_SYNC`` is enabled.
-
-    Args:
-        db: Active SQLAlchemy session.
-    """
     if get_settings().outbox_sync:
         process_pending(db)

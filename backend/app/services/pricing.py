@@ -1,5 +1,3 @@
-"""Versioned pricing plans and quantity pricing calculators."""
-
 from __future__ import annotations
 
 import json
@@ -16,14 +14,6 @@ from app.services import audit
 
 
 def _tiers_to_json(tiers: list | None) -> str | None:
-    """Serialize tier definitions to JSON text for storage.
-
-    Args:
-        tiers: Optional list of ``Tier`` models.
-
-    Returns:
-        JSON string or ``None`` when no tiers are provided.
-    """
     if not tiers:
         return None
     payload = [
@@ -40,17 +30,6 @@ def create_plan(
     body: PlanCreate,
     actor_user_id: str | None = None,
 ) -> PricingPlan:
-    """Create a pricing plan with an initial version and components.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        body: Plan create payload.
-        actor_user_id: Optional authenticated user id for audit.
-
-    Returns:
-        Newly created ``PricingPlan`` including version 1.
-    """
     plan = PricingPlan(
         organization_id=organization_id,
         code=body.code,
@@ -90,21 +69,6 @@ def add_version(
     body: PlanVersionCreate,
     actor_user_id: str | None = None,
 ) -> PricingVersion:
-    """Append a new pricing version and close the prior effective interval.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id.
-        plan_code: Existing plan code.
-        body: New version payload.
-        actor_user_id: Optional authenticated user id for audit.
-
-    Returns:
-        Newly created ``PricingVersion``.
-
-    Raises:
-        ValueError: If the plan is not found.
-    """
     plan = db.scalar(
         select(PricingPlan).where(
             PricingPlan.organization_id == organization_id,
@@ -145,17 +109,6 @@ def _attach_components(
     version: PricingVersion,
     components: list[ComponentIn],
 ) -> None:
-    """Attach pricing components to a version.
-
-    Args:
-        db: Active SQLAlchemy session.
-        organization_id: Tenant id used to resolve metrics.
-        version: Target pricing version.
-        components: Component definitions to attach.
-
-    Raises:
-        ValueError: If a referenced metric code is unknown.
-    """
     for component in components:
         metric = db.scalar(
             select(Metric).where(
@@ -177,18 +130,6 @@ def _attach_components(
 
 
 def get_version(db: Session, version_id: str) -> PricingVersion:
-    """Load a pricing version with components eagerly loaded.
-
-    Args:
-        db: Active SQLAlchemy session.
-        version_id: Pricing version primary key.
-
-    Returns:
-        ``PricingVersion`` including ``components``.
-
-    Raises:
-        ValueError: If the version does not exist.
-    """
     version = db.scalar(
         select(PricingVersion)
         .where(PricingVersion.id == version_id)
@@ -200,18 +141,7 @@ def get_version(db: Session, version_id: str) -> PricingVersion:
 
 
 def price_quantity(component: PricingComponent, quantity: Decimal) -> tuple[Decimal, Decimal]:
-    """Price a usage quantity under a flat or tiered component.
-
-    Args:
-        component: Pricing component definition.
-        quantity: Usage quantity to price.
-
-    Returns:
-        Tuple of ``(effective_unit_price, line_amount)``.
-
-    Raises:
-        ValueError: Unknown model, missing tiers, or quantity beyond tiers.
-    """
+    """Return (unit_price_effective_or_zero, line_amount) for a component + qty."""
     qty = usage_qty(quantity)
     if component.model == "flat_per_unit":
         unit = money(component.unit_price)

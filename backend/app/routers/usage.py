@@ -1,5 +1,3 @@
-"""Usage event ingest routes."""
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,16 +15,6 @@ router = APIRouter(prefix="/usage", tags=["usage"])
 
 
 def _out(row, *, duplicate: bool, conflict: bool = False) -> UsageEventOut:
-    """Map a usage event ORM row to the API response schema.
-
-    Args:
-        row: Persisted ``UsageEvent``.
-        duplicate: Whether this request was an idempotent replay.
-        conflict: Reserved flag for conflict responses (usually False here).
-
-    Returns:
-        ``UsageEventOut`` response model.
-    """
     return UsageEventOut(
         id=row.id,
         event_id=row.event_id,
@@ -46,20 +34,6 @@ def ingest_one(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> UsageEventOut:
-    """Ingest a single usage event with persist-before-ack semantics.
-
-    Args:
-        body: Usage event payload.
-        request: Incoming request (correlation header).
-        db: Database session.
-        user: Authenticated tenant user.
-
-    Returns:
-        Accepted or duplicate event response.
-
-    Raises:
-        HTTPException: 409 on content conflict, 400 on validation/domain errors.
-    """
     cid = request.headers.get("x-correlation-id") or correlation_id_var.get()
     try:
         row, duplicate = metering.ingest_event(
@@ -86,20 +60,6 @@ def ingest_batch(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> list[UsageEventOut]:
-    """Ingest a batch of usage events in one transaction.
-
-    Args:
-        body: Batch payload of usage events.
-        request: Incoming request (correlation header).
-        db: Database session.
-        user: Authenticated tenant user.
-
-    Returns:
-        Per-event accept/duplicate responses.
-
-    Raises:
-        HTTPException: 409 on content conflict, 400 on validation/domain errors.
-    """
     cid = request.headers.get("x-correlation-id") or correlation_id_var.get()
     results: list[UsageEventOut] = []
     try:

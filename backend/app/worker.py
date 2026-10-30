@@ -26,21 +26,11 @@ _running = True
 
 
 def _stop(*_args: object) -> None:
-    """Signal handler that requests a graceful worker shutdown.
-
-    Args:
-        *_args: Unused signal handler arguments.
-    """
     global _running
     _running = False
 
 
 def run(poll_seconds: float = 0.5) -> None:
-    """Run the outbox worker loop until interrupted.
-
-    Args:
-        poll_seconds: Sleep duration when a drain pass finds no work.
-    """
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
     get_settings()  # ensure env loaded before engine use

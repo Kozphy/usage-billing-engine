@@ -1,5 +1,3 @@
-"""SQLAlchemy engine, session factory, and FastAPI dependency."""
-
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event
@@ -9,15 +7,10 @@ from app.config import get_settings
 
 
 class Base(DeclarativeBase):
-    """Declarative base for ORM models."""
+    pass
 
 
 def _make_engine():
-    """Create the process-wide SQLAlchemy engine from settings.
-
-    Returns:
-        Configured ``Engine`` (SQLite enables foreign keys via PRAGMA).
-    """
     settings = get_settings()
     connect_args = {}
     if settings.database_url.startswith("sqlite"):
@@ -39,11 +32,6 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Yield a request-scoped database session.
-
-    Yields:
-        SQLAlchemy ``Session`` closed when the request finishes.
-    """
     db = SessionLocal()
     try:
         yield db
