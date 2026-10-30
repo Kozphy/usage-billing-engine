@@ -1,0 +1,14 @@
+{
+  "events_requested": 100000,
+  "events_stored": 100000,
+  "outbox_drained": 100000,
+  "ingest_seconds": 113.902,
+  "outbox_seconds": 58.403,
+  "elapsed_seconds": 172.305,
+  "events_per_second_ingest": 877.94,
+  "events_per_second_end_to_end": 580.36,
+  "database": "sqlite",
+  "outbox_sync": false,
+  "note": "Local smoke benchmark; not a production SLA claim.",
+  "ran_at": "2026-10-29T13:19:25.773641+00:00"
+}
