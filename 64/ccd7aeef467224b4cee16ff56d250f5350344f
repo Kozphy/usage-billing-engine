@@ -1,0 +1,19 @@
+.gitignore
+  s_8bb9f4282eb2b6::t_bfa42d69129d35 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64ccd7aeef467224b4cee16ff56d250f5350344f",
+  "prompts": {},
+  "sessions": {
+    "s_8bb9f4282eb2b6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "685a16d7-842b-49b7-82c2-b5f4c6998994",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
