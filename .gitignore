@@ -11,4 +11,5 @@ backend/.venv/
 dist/
 *.egg-info/
 benchmarks/bench.db
+benchmarks/migration.db
 .DS_Store
