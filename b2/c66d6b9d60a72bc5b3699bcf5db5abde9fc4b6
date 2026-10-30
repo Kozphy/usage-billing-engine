@@ -1,0 +1,100 @@
+backend/app/errors.py
+  s_8bb9f4282eb2b6::t_0ee12017b2cb80 7,11,14-19,25-26,28-33,39-40,42-46
+backend/app/main.py
+  s_8bb9f4282eb2b6::t_05b43ed6ec0b16 1-2,17-24,32-36,54-58
+backend/app/routers/billing.py
+  s_8bb9f4282eb2b6::t_1ec53d564e8cf8 147-157
+  s_8bb9f4282eb2b6::t_4b784f063e7398 1-2,33-40
+  s_8bb9f4282eb2b6::t_f9e89b186687c2 89-98
+backend/app/worker.py
+  s_8bb9f4282eb2b6::t_f4c3919d9cf5c0 29-33,39-43
+backend/app/routers/usage.py
+  s_8bb9f4282eb2b6::t_d882787049480a 89-102
+  s_8bb9f4282eb2b6::t_0935eb90c6711d 49-62
+  s_8bb9f4282eb2b6::t_b77098fa7a801e 1-2,20-29
+backend/app/services/metering.py
+  s_8bb9f4282eb2b6::t_558d1b7ec578d3 139-149
+  s_8bb9f4282eb2b6::t_cc533733fad6a0 462-474
+  s_8bb9f4282eb2b6::t_70ccc99ce2e3b8 111-123
+  s_8bb9f4282eb2b6::t_35caf08e13f0ae 1-2,44-51
+  s_8bb9f4282eb2b6::t_25d6645ca46e60 68-79,86-98
+backend/app/services/invoicing.py
+  s_8bb9f4282eb2b6::t_631749d75ebf51 51-58,81-100
+  s_8bb9f4282eb2b6::t_2c2268a6580161 366,369-383
+  s_8bb9f4282eb2b6::t_df0d46bb2d3f71 250-257,271-286
+  s_8bb9f4282eb2b6::t_35df984ab8d193 487-500
+  s_8bb9f4282eb2b6::t_34b81665b925c4 540-548
+  s_8bb9f4282eb2b6::t_748fcd9d32fa41 1-2,35-43
+backend/app/services/payments.py
+  s_8bb9f4282eb2b6::t_a7afe7a3263726 111-120,148-162
+  s_8bb9f4282eb2b6::t_6d161cdbefbe31 1-2,27-28,38-50,58-69,85-98
+  s_8bb9f4282eb2b6::t_51925dcbe68947 206-218,248-252,267-283
+  s_8bb9f4282eb2b6::t_0b5d0aa803db99 438-447
+  s_8bb9f4282eb2b6::t_742ef4b2ea2792 465-477
+  s_8bb9f4282eb2b6::t_c579decb925431 390-405
+backend/app/routers/catalog.py
+  s_8bb9f4282eb2b6::t_8962d64efecb9e 1-2,32-41
+backend/app/logging_setup.py
+  s_8bb9f4282eb2b6::t_587fdcb1d689d9 16-17,19-26,53-57,67-74
+backend/app/db.py
+  s_8bb9f4282eb2b6::t_669108371e81e9 1-2,12,16-20,42-46
+backend/app/middleware.py
+  s_8bb9f4282eb2b6::t_cd117a38f9703c 1-2,15-16,18-26
+backend/app/services/outbox.py
+  s_8bb9f4282eb2b6::t_c86a1d8989ef18 1-2,27-38
+  s_8bb9f4282eb2b6::t_1409945de07788 147-155
+  s_8bb9f4282eb2b6::t_a5eeb95f1fe95c 173-177
+  s_8bb9f4282eb2b6::t_db144dbc8d2c3d 55-66
+  s_8bb9f4282eb2b6::t_f0f919d30db662 90-101
+backend/app/money.py
+  s_8bb9f4282eb2b6::t_670ae434fa4cf9 17-30,40-52,65-72,77-84,89-96
+backend/app/security.py
+  s_8bb9f4282eb2b6::t_3dc6d67827bb29 1-2,22-29,34-42,47-55,66-77
+backend/app/config.py
+  s_8bb9f4282eb2b6::t_9d40887a9e4fe5 1-2,9-31,61-65,70-74,80-84
+backend/app/services/audit.py
+  s_8bb9f4282eb2b6::t_831f2645e30607 1-2,23-36
+backend/app/services/tax.py
+  s_8bb9f4282eb2b6::t_dd85f30dde32b6 19-25
+backend/app/services/replay.py
+  s_8bb9f4282eb2b6::t_61f8644b7c3897 1-2,13-21,36-44
+backend/app/models.py
+  s_8bb9f4282eb2b6::t_f2e53419a56cd2 186-187
+  s_8bb9f4282eb2b6::t_afe9ff9ea116a8 237-238
+  s_8bb9f4282eb2b6::t_05b6f24576e8b5 295
+  s_8bb9f4282eb2b6::t_41e7c36f29cbc2 80-81
+  s_8bb9f4282eb2b6::t_8fe67218753247 1-2,29-33,38,40-43,47-48,58-59
+  s_8bb9f4282eb2b6::t_d81183146d63d6 67-68
+  s_8bb9f4282eb2b6::t_c8bf9e628f7a2a 95-96
+backend/app/schemas.py
+  s_8bb9f4282eb2b6::t_45b1496fc6d091 1-2,11-12
+backend/app/routers/auth.py
+  s_8bb9f4282eb2b6::t_022b75c17512e4 67-78
+  s_8bb9f4282eb2b6::t_e9964798f5db6e 1-2,21-32
+backend/app/services/reporting.py
+  s_8bb9f4282eb2b6::t_8f35fddc547b07 1-2,16-24
+backend/app/services/pricing.py
+  s_8bb9f4282eb2b6::t_1c458d6fa7826c 43-53
+  s_8bb9f4282eb2b6::t_62975aef82ea36 93-107
+  s_8bb9f4282eb2b6::t_1558311f8e006c 148-158
+  s_8bb9f4282eb2b6::t_1c1fee82aa468a 1-2,19-26
+  s_8bb9f4282eb2b6::t_4e30a154425372 180-191,203-214
+backend/app/services/webhooks.py
+  s_8bb9f4282eb2b6::t_9580338e73bcc4 1-2,28-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2c66d6b9d60a72bc5b3699bcf5db5abde9fc4b6",
+  "prompts": {},
+  "sessions": {
+    "s_8bb9f4282eb2b6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "685a16d7-842b-49b7-82c2-b5f4c6998994",
+        "model": "default"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
