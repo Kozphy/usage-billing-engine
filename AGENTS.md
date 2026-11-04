@@ -27,6 +27,14 @@ Portfolio payments/billing service for demonstrating metering, invoicing, outbox
 cd backend && pip install -e ".[dev]" && pytest -q && ruff check app tests
 ```
 
+## Cloud Agent
+
+The saved environment installs the Python 3.12 dev tools and PostgreSQL 16. It does not configure Stripe.
+
+- `pytest`, `ruff`, `uvicorn`, and `alembic` are on `PATH` from `~/.local/billing-venv`.
+- PostgreSQL listens on `127.0.0.1:5433`. The role, password, and database are `billing`, matching the default URL in `backend/tests/conftest.py`. `pytest -q` runs the postgres-marked tests when that server is up.
+- On boot, Postgres starts and the API listens on `0.0.0.0:8000` using SQLite (`backend/billing.db`) and the mock payment provider. Health is `GET /health`. OpenAPI is `/docs`.
+
 ## Patterns reused (do not modify those repos from here)
 
 - FinOps Decimal money discipline
