@@ -1,0 +1,25 @@
+docs/audit/elevenlabs-role-mapping.md
+  s_e35ea363c1a2d8::t_0eab8fc34265cf 1-43
+docs/audit/payments-engineering-gap-analysis.md
+  s_e35ea363c1a2d8::t_5d080842f7a815 1-47
+docs/audit/phase3-implementation-status.md
+  s_e35ea363c1a2d8::t_eecef739531b01 1-37
+docs/audit/portfolio-evidence-matrix.md
+  s_e35ea363c1a2d8::t_2a0d2cdcccc2a4 1-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98a4d6ab6f5d30cdce59d49ee766711284009668",
+  "prompts": {},
+  "sessions": {
+    "s_e35ea363c1a2d8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "s_e35ea363c1a2d8",
+        "model": "unknown"
+      },
+      "human_author": "Zixsa <50504962+Kozphy@users.noreply.github.com>"
+    }
+  }
+}
